@@ -23,7 +23,7 @@ import java.util.concurrent.atomic.AtomicInteger;
 public class LocalApp {
 
     final static AWS aws = AWS.getInstance();
-
+    public static String inputFileName = "input-sample-2.txt";
 
     public static void main(String[] args) throws Exception {
         //read from terminal >java -jar yourjar.jar inputFileName outputFileName n [terminate]
@@ -39,7 +39,7 @@ public class LocalApp {
 //        int n = Integer.parseInt(args[2]);
 //        boolean terminate = args.length > 3 && args[3].equals("terminate");
 
-        String inputFileName = "input-sample-2.txt";
+
         File inputFile = new File("input-sample-2.txt");
 
         aws.createBucketIfNotExists(aws.bucketName);
@@ -47,8 +47,8 @@ public class LocalApp {
 
         // Create a new SQS queue
         String queueName = "LocalAppToManagerQueue";
-        aws.createSqsQueue(queueName);
-        aws.sendMessageToQueue(queueName, inputFileName);
+        String queueUrl = aws.createSqsQueue(queueName);
+        aws.sendMessageToQueue(queueUrl, inputFileName);
 
 
 
