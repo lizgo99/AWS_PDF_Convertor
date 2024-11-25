@@ -26,6 +26,8 @@ public class LocalApp {
     final static AWS aws = AWS.getInstance();
     public static String inputFileName = "test-samples.txt";
 
+    public static HashSet<String> QueueUrls;
+
     public static void main(String[] args) throws Exception {
         //read from terminal >java -jar yourjar.jar inputFileName outputFileName n [terminate]
 //        if (args.length < 3) {
@@ -49,18 +51,24 @@ public class LocalApp {
         // Create a new SQS queue
         String queueName = "LocalAppToManagerQueue";
         String queueUrl = aws.createSqsQueue(queueName);
+        QueueUrls.add(queueUrl);
         aws.sendMessageToQueue(queueUrl, inputFile.getName());
 
 
-
+        cleanup();
 
 
 
 
     }
     // TODO: Create a cleanup function to delete all the buckets and queues
-    public void cleanup(){
+    public static void cleanup(){
         // Delete all the queues
+        for (String queueUrl : QueueUrls){
+            aws.deleteQueue(queueUrl);
+            QueueUrls.remove(queueUrl);
+        }
         // Delete all the buckets - files inside the bucket
+        aws.deleteBucket(aws.bucketName);
     }
 }

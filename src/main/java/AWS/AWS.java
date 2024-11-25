@@ -1,5 +1,6 @@
 package AWS;
 
+import jdk.internal.org.jline.terminal.TerminalBuilder;
 import software.amazon.awssdk.core.ResponseBytes;
 import software.amazon.awssdk.regions.Region;
 import software.amazon.awssdk.services.ec2.Ec2Client;
@@ -17,6 +18,8 @@ public class AWS {
     private final S3Client s3;
     private final SqsClient sqs;
     private final Ec2Client ec2;
+
+
 
     public static String ami = "ami-00e95a9222311e8ed";
     public static String ManagerScript = "#!/bin/bash\n" +
@@ -41,8 +44,8 @@ public class AWS {
         return instance;
     }
 
-    public String bucketName = "input-bucket-910o3";
-
+    public String bucketName = "input-bucket-910o31";
+    private static boolean DebugOn = true;
 
     // S3
     public void createBucketIfNotExists(String bucketName) {
@@ -71,10 +74,66 @@ public class AWS {
                         .key(keyPath)
                         .build();
 
-        this.s3.putObject(req, file.toPath()); // we don't need to check if the file exist already
+        s3.putObject(req, file.toPath()); // we don't need to check if the file exist already
 
         // Return the S3 path of the uploaded file
         return "s3://" + bucketName + "/" + keyPath;
+    }
+
+    public void downloadFileFromS3(String keyPath, File outputFile) {
+        System.out.println("Start downloading file " + keyPath + " to " + outputFile.getPath());
+
+        GetObjectRequest getObjectRequest = GetObjectRequest.builder()
+                .bucket(bucketName)
+                .key(keyPath)
+                .build();
+
+        try {
+            ResponseBytes<GetObjectResponse> objectBytes = s3.getObjectAsBytes(getObjectRequest);
+            byte[] data = objectBytes.asByteArray();
+
+            // Write the data to a local file.
+            OutputStream os = new FileOutputStream(outputFile);
+            os.write(data);
+            System.out.println("Successfully obtained bytes from an S3 object");
+            os.close();
+        } catch (FileNotFoundException e) {
+            throw new RuntimeException(e);
+        } catch (IOException e) {
+            throw new RuntimeException(e);
+        }
+    }
+
+    public void deleteBucket(String bucketName){
+        emptyBucket(bucketName);
+        DeleteBucketRequest deleteBucketRequest =
+                DeleteBucketRequest.builder()
+                    .bucket(bucketName)
+                    .build();
+        s3.deleteBucket(deleteBucketRequest);
+        debugMsg("Bucket " + bucketName + " has been deleted");
+        s3.close();
+    }
+
+    public void emptyBucket(String bucketName){
+        ListObjectsRequest listObjectsRequest =
+                ListObjectsRequest.builder()
+                        .bucket(bucketName)
+                        .build();
+
+        ListObjectsResponse listObjectsResponse = s3.listObjects(listObjectsRequest);
+
+        debugMsg("Starting to clean bucket " + bucketName);
+        listObjectsResponse.contents().forEach(s3Object -> {
+            String objectKey = s3Object.key();
+            DeleteObjectRequest deleteRequest = DeleteObjectRequest.builder()
+                    .bucket(bucketName)
+                    .key(objectKey)
+                    .build();
+            s3.deleteObject(deleteRequest);
+            System.out.println("Deleted object: " + objectKey);
+        });
+        debugMsg("Finished cleaning bucket " + bucketName);
     }
 
     // EC2
@@ -118,6 +177,7 @@ public class AWS {
         return instanceId;
     }
 
+    // SQS
     public String createSqsQueue(String queueName) {
         CreateQueueRequest createQueueRequest = CreateQueueRequest.builder()
                 .queueName(queueName)
@@ -148,32 +208,74 @@ public class AWS {
             SendMessageResponse sendResponse = sqs.sendMessage(sendMsgRequest);
             System.out.println("Message sent. MessageId: " + sendResponse.messageId());
         } catch (SqsException e) {
-            System.err.println("Error sending message: " + e.awsErrorDetails().errorMessage());
+            errorMsg("Error sending message: " + e.awsErrorDetails().errorMessage());
             throw e;
         }
     }
 
-    public void downloadFileFromS3(String keyPath, File outputFile) {
-        System.out.println("Start downloading file " + keyPath + " to " + outputFile.getPath());
-
-        GetObjectRequest getObjectRequest = GetObjectRequest.builder()
-                .bucket(bucketName)
-                .key(keyPath)
-                .build();
-
+    public void deleteQueue(String queueUrl) {
         try {
-            ResponseBytes<GetObjectResponse> objectBytes = s3.getObjectAsBytes(getObjectRequest);
-            byte[] data = objectBytes.asByteArray();
+            DeleteQueueRequest deleteRequest = DeleteQueueRequest.builder()
+                    .queueUrl(queueUrl)
+                    .build();
 
-            // Write the data to a local file.
-            OutputStream os = new FileOutputStream(outputFile);
-            os.write(data);
-            System.out.println("Successfully obtained bytes from an S3 object");
-            os.close();
-        } catch (FileNotFoundException e) {
-            throw new RuntimeException(e);
-        } catch (IOException e) {
-            throw new RuntimeException(e);
+            sqsClient.deleteQueue(deleteRequest);
+            debugMsg("Queue deleted successfully: " + queueUrl);
+        } catch (Exception e) {
+            errorMsg("Error deleting the queue (" + queueUrl + "):" + e.getMessage());
+        } finally {
+            sqsClient.close();
+        }
+    }
+
+    // SQS: Worker Additions
+
+    public Message getMessageFromQueue(String queueUrl) {
+        try {
+            ReceiveMessageRequest receiveRequest = ReceiveMessageRequest.builder()
+                    .queueUrl(queueUrl)
+                    .maxNumberOfMessages(1)
+                    .build();
+
+            ReceiveMessageResponse receiveResponse = sqs.receiveMessage(receiveRequest);
+            if (receiveResponse.messages().size() == 0) {
+                return null;
+            }
+
+            Message message = receiveResponse.messages().get(0);
+            debugMsg("Message received. MessageId: " + message.messageId());
+            return message;
+        } catch (SqsException e) {
+            errorMsg("Error receiving message: " + e.awsErrorDetails().errorMessage());
+            throw e;
+        }
+    }
+
+    public void deleteMessageFromQueue(String queueUrl, String receiptHandle) {
+        try {
+            DeleteMessageRequest deleteRequest = DeleteMessageRequest.builder()
+                    .queueUrl(queueUrl)
+                    .receiptHandle(receiptHandle)
+                    .build();
+
+            sqs.deleteMessage(deleteRequest);
+            debugMsg("Message deleted");
+        } catch (SqsException e) {
+            errorMsg("Error deleting message: " + e.awsErrorDetails().errorMessage());
+            throw e;
+        }
+    }
+
+    public String connectToQueueByName(String queueName) {
+        try {
+            GetQueueUrlRequest getQueueRequest = GetQueueUrlRequest.builder()
+                    .queueName(queueName)
+                    .build();
+            GetQueueUrlResponse getQueueResponse = sqs.getQueueUrl(getQueueRequest);
+            return getQueueResponse.queueUrl();
+        } catch (SqsException e) {
+            System.err.println("Error connecting to queue: " + e.awsErrorDetails().errorMessage());
+            throw e;
         }
     }
 
@@ -213,59 +315,20 @@ public class AWS {
         return false;
     }
 
-
-    //Worker Additions
-
-    public Message getMessageFromQueue(String queueUrl) {
-        try {
-            ReceiveMessageRequest receiveRequest = ReceiveMessageRequest.builder()
-                    .queueUrl(queueUrl)
-                    .maxNumberOfMessages(1)
-                    .build();
-
-            ReceiveMessageResponse receiveResponse = sqs.receiveMessage(receiveRequest);
-            if (receiveResponse.messages().size() == 0) {
-                return null;
-            }
-
-            Message message = receiveResponse.messages().get(0);
-            System.out.println("Message received. MessageId: " + message.messageId());
-            return message;
-        } catch (SqsException e) {
-            System.err.println("Error receiving message: " + e.awsErrorDetails().errorMessage());
-            throw e;
+    // Output functions
+    public static void debugMsg (String msg){
+        if (DebugOn){
+            String blueBold = "\033[1;34m";
+            String reset = "\033[0m";
+            System.out.println(blueBold + "[DEBUG] " + reset + msg);
         }
     }
 
-    public void deleteMessageFromQueue(String queueUrl, String receiptHandle) {
-        try {
-            DeleteMessageRequest deleteRequest = DeleteMessageRequest.builder()
-                    .queueUrl(queueUrl)
-                    .receiptHandle(receiptHandle)
-                    .build();
-
-            sqs.deleteMessage(deleteRequest);
-            System.out.println("Message deleted");
-        } catch (SqsException e) {
-            System.err.println("Error deleting message: " + e.awsErrorDetails().errorMessage());
-            throw e;
-        }
+    public static void errorMsg (String msg){
+        String redBold = "\033[1;31m";
+        String reset = "\033[0m";
+        System.out.println(redBold + "[ERROR] " + reset + msg);
     }
-
-    public String connectToQueueByName(String queueName) {
-        try {
-            GetQueueUrlRequest getQueueRequest = GetQueueUrlRequest.builder()
-                    .queueName(queueName)
-                    .build();
-            GetQueueUrlResponse getQueueResponse = sqs.getQueueUrl(getQueueRequest);
-            return getQueueResponse.queueUrl();
-        } catch (SqsException e) {
-            System.err.println("Error connecting to queue: " + e.awsErrorDetails().errorMessage());
-            throw e;
-        }
-    }
-
-
 
 }
 
