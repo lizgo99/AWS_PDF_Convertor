@@ -133,16 +133,34 @@ public class AWS {
 //                queueUrl = sqs.getQueueUrl(getQueueRequest).queueUrl();
 //            }
 //
-//        SendMessageRequest sendMsgRequest = SendMessageRequest.builder()
-//                .queueUrl(queueUrl)
-//                .messageBody("File uploaded to S3 at: " + s3FileUrl)
-//                .build();
+//            SendMessageRequest sendMsgRequest = SendMessageRequest.builder()
+//                    .queueUrl(queueUrl)
+//                    .messageBody(message)
+//                    .build();
 //
-//        // Send the message
-//        SendMessageResponse sendResponse = sqs.sendMessage(sendMsgRequest);
-//        System.out.println("Message sent to SQS. Message ID: " + sendResponse.messageId());
-//
+//            SendMessageResponse sendResponse = sqs.sendMessage(sendMsgRequest);
+//            System.out.println("Message sent. MessageId: " + sendResponse.messageId());
+//        } catch (SqsException e) {
+//            System.err.println("Error sending message: " + e.awsErrorDetails().errorMessage());
+//            throw e;
+//        }
 //    }
+//
+//
+////    public void sendMessageToQueue(String queueUrl, String s3FileUrl) {
+////
+////        SendMessageRequest sendMsgRequest = SendMessageRequest.builder()
+////                .queueUrl(queueUrl)
+////                .messageBody("File uploaded to S3 at: " + s3FileUrl)
+////                .build();
+////
+////        // Send the message
+////        SendMessageResponse sendResponse = sqs.sendMessage(sendMsgRequest);
+////        System.out.println("Message sent to SQS. Message ID: " + sendResponse.messageId());
+////
+////    }
+
+
 
 }
 

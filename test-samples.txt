@@ -1,0 +1,3 @@
+ToImage	http://www.bethelnewton.org/images/Passover_Guide_BOOKLET.pdf
+ToHTML	http://www.rabbinicalassembly.org/sites/default/files/public/jewish-law/holidays/pesah/why-do-we-sing-the-song-of-songs-on-passover.pdf
+ToText	http://avirtualpassover.com/pdf/introduction.pdf
