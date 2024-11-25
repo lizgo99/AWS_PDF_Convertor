@@ -5,6 +5,8 @@ import LocalApp.LocalApp;
 
 import java.io.*;
 
+import static java.lang.Math.min;
+
 
 public class Manager {
 
@@ -12,15 +14,20 @@ public class Manager {
     static int numberOfActiveWorkers = 0;
     boolean shouldTerminate = false;
 
+    static String ManagerToWorkersQueueUrl = "";
+    static String WorkersToManagerQueueUrl = "";
+    static String LocalAppToManagerQueueUrl = "";
+
 
     public static void main(String[] args) {
 
 
         String queueName = "ManagerToWorkersQueue";
-        String queueUrl = aws.createSqsQueue(queueName);
+        ManagerToWorkersQueueUrl = aws.createSqsQueue(queueName);
+        WorkersToManagerQueueUrl = aws.createSqsQueue("WorkersToManagerQueue");
         // for each Url in file send message to the workers queue
 
-        handTasks(1, queueUrl);
+        handTasks(1, ManagerToWorkersQueueUrl);
 
 
 
@@ -54,10 +61,10 @@ public class Manager {
             System.err.println("Error processing file: " + e.getMessage());
         }
 
-        if (numberOfActiveWorkers < taskCounter && numberOfActiveWorkers < 9)  {
-            int numberOfInstances = min(taskCounter - numberOfActiveWorkers, tasksPerWorker - numberOfActiveWorkers);
-            aws.createEC2("worker script", "worker", numberOfInstances);
-            numberOfActiveWorkers += numberOfInstances;
-        }
+//        if (numberOfActiveWorkers < taskCounter && numberOfActiveWorkers < 9)  {
+//            int numberOfInstances = min(taskCounter - numberOfActiveWorkers, tasksPerWorker - numberOfActiveWorkers);
+//            aws.createEC2("worker script", "worker", numberOfInstances);
+//            numberOfActiveWorkers += numberOfInstances;
+//        }
     }
 }

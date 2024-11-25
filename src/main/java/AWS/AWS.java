@@ -132,7 +132,7 @@ public class AWS {
 
     public void sendMessageToQueue(String queueUrl, String message) {
         try {
-            // First, get queue URL if name was provided instead of URL
+            // get queue URL if name was provided instead of URL
             if (!queueUrl.startsWith("https://")) {
                 GetQueueUrlRequest getQueueRequest = GetQueueUrlRequest.builder()
                         .queueName(queueUrl)
@@ -214,18 +214,56 @@ public class AWS {
     }
 
 
-//    public void sendMessageToQueue(String queueUrl, String s3FileUrl) {
-//
-//        SendMessageRequest sendMsgRequest = SendMessageRequest.builder()
-//                .queueUrl(queueUrl)
-//                .messageBody("File uploaded to S3 at: " + s3FileUrl)
-//                .build();
-//
-//        // Send the message
-//        SendMessageResponse sendResponse = sqs.sendMessage(sendMsgRequest);
-//        System.out.println("Message sent to SQS. Message ID: " + sendResponse.messageId());
-//
-//    }
+    //Worker Additions
+
+    public Message getMessageFromQueue(String queueUrl) {
+        try {
+            ReceiveMessageRequest receiveRequest = ReceiveMessageRequest.builder()
+                    .queueUrl(queueUrl)
+                    .maxNumberOfMessages(1)
+                    .build();
+
+            ReceiveMessageResponse receiveResponse = sqs.receiveMessage(receiveRequest);
+            if (receiveResponse.messages().size() == 0) {
+                return null;
+            }
+
+            Message message = receiveResponse.messages().get(0);
+            System.out.println("Message received. MessageId: " + message.messageId());
+            return message;
+        } catch (SqsException e) {
+            System.err.println("Error receiving message: " + e.awsErrorDetails().errorMessage());
+            throw e;
+        }
+    }
+
+    public void deleteMessageFromQueue(String queueUrl, String receiptHandle) {
+        try {
+            DeleteMessageRequest deleteRequest = DeleteMessageRequest.builder()
+                    .queueUrl(queueUrl)
+                    .receiptHandle(receiptHandle)
+                    .build();
+
+            sqs.deleteMessage(deleteRequest);
+            System.out.println("Message deleted");
+        } catch (SqsException e) {
+            System.err.println("Error deleting message: " + e.awsErrorDetails().errorMessage());
+            throw e;
+        }
+    }
+
+    public String connectToQueueByName(String queueName) {
+        try {
+            GetQueueUrlRequest getQueueRequest = GetQueueUrlRequest.builder()
+                    .queueName(queueName)
+                    .build();
+            GetQueueUrlResponse getQueueResponse = sqs.getQueueUrl(getQueueRequest);
+            return getQueueResponse.queueUrl();
+        } catch (SqsException e) {
+            System.err.println("Error connecting to queue: " + e.awsErrorDetails().errorMessage());
+            throw e;
+        }
+    }
 
 
 

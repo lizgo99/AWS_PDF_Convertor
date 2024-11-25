@@ -19,11 +19,12 @@ import java.io.OutputStream;
 import java.nio.charset.StandardCharsets;
 import java.util.*;
 import java.util.concurrent.atomic.AtomicInteger;
+import AWS.AWS;
 
 public class LocalApp {
 
     final static AWS aws = AWS.getInstance();
-    public static String inputFileName = "input-sample-2.txt";
+    public static String inputFileName = "test-samples.txt";
 
     public static void main(String[] args) throws Exception {
         //read from terminal >java -jar yourjar.jar inputFileName outputFileName n [terminate]
@@ -40,15 +41,15 @@ public class LocalApp {
 //        boolean terminate = args.length > 3 && args[3].equals("terminate");
 
 
-        File inputFile = new File("input-sample-2.txt");
+        File inputFile = new File("test-samples.txt");
 
         aws.createBucketIfNotExists(aws.bucketName);
-        aws.uploadFileToS3(inputFileName, inputFile);
+        aws.uploadFileToS3(inputFile.getName(), inputFile);
 
         // Create a new SQS queue
         String queueName = "LocalAppToManagerQueue";
         String queueUrl = aws.createSqsQueue(queueName);
-        aws.sendMessageToQueue(queueUrl, inputFileName);
+        aws.sendMessageToQueue(queueUrl, inputFile.getName());
 
 
 
