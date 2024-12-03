@@ -22,10 +22,10 @@ import AWS.AWS;
 public class LocalApp {
 
     final static AWS aws = AWS.getInstance();
-    private static String RESULT_QUEUE_URL;
-    public static String inputFileName = "test-samples.txt";
+    private static String RESULT_QUEUE_URL = null;
+    public static String inputFileName = "input-sample-2.txt";
 
-    public static HashSet<String> QueueUrls;
+    public static HashSet<String> QueueUrls = new HashSet<>();
 
     public static void main(String[] args) throws Exception {
         //read from terminal >java -jar yourjar.jar inputFileName outputFileName n [terminate]
@@ -40,36 +40,46 @@ public class LocalApp {
 //        System.out.println("outputFileName: " + outputFileName);
 //        int n = Integer.parseInt(args[2]);
 //        boolean terminate = args.length > 3 && args[3].equals("terminate");
-
-        File inputFile = new File("test-samples.txt");
+        int pdfsPerWorker = 10;
+        File inputFile = new File(inputFileName);
 
         // Create manager if one doesn't exist
-        aws.createManagerIfDoesNotExist();
+        aws.startManagerIfNotActive();
 
         // Create a bucket and upload the file
         aws.createBucketIfNotExists(aws.bucketName);
-        String fileLocation =  aws.uploadFileToS3(inputFile.getName(), inputFile);
+        String fileLocation =  aws.uploadFileToS3("inputs/" + inputFile.getName(), inputFile);
 
         // Create a new SQS queue
-        String queueName = "LocalAppToManagerQueue";
+        String queueName = "LocalAppToManager";
         String queueUrl = aws.createSqsQueue(queueName);
         QueueUrls.add(queueUrl);
 
         // Upload file location to the SQS
-        aws.sendMessageToQueue(queueUrl, fileLocation);
+        aws.sendMessageToQueue(queueUrl, fileLocation + "\t" + Integer.toString(pdfsPerWorker));
 
-        RESULT_QUEUE_URL = aws.createSqsQueue("ResultQueue");
+        RESULT_QUEUE_URL = aws.createSqsQueue("ManagerToLocalApp");
         QueueUrls.add(queueUrl);
 
         String summeryURL = waitForSummaryFile();
 
         if (summeryURL != null) {
             File summeryFile = new File("summery.txt");
-            aws.downloadFileFromS3(summeryURL, summeryFile);
-            File outputFile = new File("output.txt");
-            createHTMLFile(summeryFile.getPath(), outputFile.getPath());
-            System.out.println("outputFile: " + outputFile.getPath());
+            try (BufferedReader output = aws.downloadFileFromS3(summeryURL); FileWriter writer = new FileWriter(summeryFile)) {
+                String line;
+                while ((line = output.readLine()) != null) {
+                    writer.write(line + "\n");
+                }
+                writer.flush();
+                File outputFile = new File("output1.html");
+
+                createHTMLFile(summeryFile.getPath(), outputFile.getPath());
+
+                System.out.println("outputFile: " + outputFile.getPath());
+            }
         }
+
+        aws.makeFolderPublic("outputs");
 
         cleanup();
 
@@ -81,8 +91,8 @@ public class LocalApp {
     public static String waitForSummaryFile() {
 
         String summaryFileUrl = null;
-
-        try (SqsClient sqsClient = SqsClient.create()) {
+        long startTime = System.currentTimeMillis();
+        try {
             System.out.println("Waiting for summary file...");
 
             boolean summaryReceived = false;
@@ -95,42 +105,42 @@ public class LocalApp {
                         .waitTimeSeconds(5)    // Long polling for 5 seconds
                         .build();
 
-                List<Message> messages = sqsClient.receiveMessage(receiveRequest).messages();
+                List<Message> messages = aws.pollMessages(RESULT_QUEUE_URL);
+                if (messages != null) {
+                    for (Message message : messages) {
+                        // Process the message
+                        System.out.println("Received message: " + message.body());
 
-                for (Message message : messages) {
-                    // Process the message
-                    System.out.println("Received message: " + message.body());
+                        // Assuming the message contains the summary file URL in JSON format
+                        summaryFileUrl = message.body();
+                        System.out.println("Summary file is available at: " + summaryFileUrl);
 
-                    // Assuming the message contains the summary file URL in JSON format
-                    summaryFileUrl = extractSummaryFileUrl(message.body());
-                    System.out.println("Summary file is available at: " + summaryFileUrl);
+                        // Mark the summary as received and exit loop
+                        summaryReceived = true;
 
-                    // Mark the summary as received and exit loop
-                    summaryReceived = true;
-
-                    // Delete the processed message from the queue
-                    sqsClient.deleteMessage(DeleteMessageRequest.builder()
-                            .queueUrl(RESULT_QUEUE_URL)
-                            .receiptHandle(message.receiptHandle())
-                            .build());
-                    break; // Exit the loop after processing a valid message
+                        // Delete the processed message from the queue
+                        aws.deleteMessageFromQueue(RESULT_QUEUE_URL, message.receiptHandle());
+                        break; // Exit the loop after processing a valid message
+                    }
                 }
             }
         } catch (Exception e) {
             System.err.println("Error waiting for summary file: " + e.getMessage());
         }
+        long finishTime = System.currentTimeMillis();
+        AWS.debugMsg("Waiting time: " + (finishTime - startTime)/1000 + " seconds");
         return summaryFileUrl;
     }
 
-    // Helper method to extract the summary file URL from the message body
-    private static String extractSummaryFileUrl(String messageBody) {
-        // Assume the message body is in JSON format: {"summaryFileUrl": "s3://my-bucket/summary.html"}
-        // Parse it to extract the S3 URL (use a JSON library if needed)
-        if (messageBody.contains("summaryFileUrl")) {
-            return messageBody.split(":")[1].replace("}", "").replace("\"", "").trim();
-        }
-        return "Unknown";
-    }
+//    // Helper method to extract the summary file URL from the message body
+//    private static String extractSummaryFileUrl(String messageBody) {
+//        // Assume the message body is in JSON format: {"summaryFileUrl": "s3://my-bucket/summary.html"}
+//        // Parse it to extract the S3 URL (use a JSON library if needed)
+//        if (messageBody.contains("summaryFileUrl")) {
+//            return messageBody.split(":")[1].replace("}", "").replace("\"", "").trim();
+//        }
+//        return "Unknown";
+//    }
 
     public static void createHTMLFile(String summaryFilePath, String outputHtmlPath) {
         StringBuilder htmlContent = new StringBuilder();
@@ -145,7 +155,7 @@ public class LocalApp {
                 if (parts.length < 3) continue; // Skip malformed lines
                 String operation = parts[0];
                 String inputUrl = parts[1];
-                String result = parts[2];
+                String result = parts[2].replace(" ", "");
 
                 htmlContent.append("<tr>");
                 htmlContent.append("<td>").append(operation).append("</td>");
@@ -171,7 +181,6 @@ public class LocalApp {
         }
     }
 
-    // TODO: Create a cleanup function to delete all the buckets and queues
     public static void cleanup(){
         // Delete all the queues
         for (String queueUrl : QueueUrls){
@@ -179,6 +188,6 @@ public class LocalApp {
             QueueUrls.remove(queueUrl);
         }
         // Delete all the buckets - files inside the bucket
-        aws.deleteBucket(aws.bucketName);
+        //aws.deleteBucket(aws.bucketName);
     }
 }

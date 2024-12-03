@@ -6,6 +6,8 @@ import org.apache.pdfbox.rendering.PDFRenderer;
 import org.apache.pdfbox.text.PDFTextStripper;
 import org.apache.pdfbox.tools.PDFText2HTML;
 
+import AWS.AWS;
+
 import javax.imageio.ImageIO;
 import java.awt.image.BufferedImage;
 import java.io.File;
@@ -20,13 +22,13 @@ public class Converter {
             // Process the InputStream as a PDF
             try (PDDocument document = PDDocument.load(inputStream)) {
                 PDFRenderer pdfRenderer = new PDFRenderer(document);
-                BufferedImage image = pdfRenderer.renderImageWithDPI(0, 300); // First page, 300 DPI
+                BufferedImage image = pdfRenderer.renderImageWithDPI(0, 300);
                 ImageIO.write(image, "PNG", new File(outputPath));
             } catch (IOException e) {
-                System.err.println("toImage: " + pdfUrl + " caused an exception during PDF operations: " + e.getMessage());
+                AWS.errorMsg("toImage: " + pdfUrl + " caused an exception during PDF operations: " + e.getMessage());
             }
         } catch (IOException e) {
-            System.err.println("toImage: " + pdfUrl + " caused an exception during the HTTP request: " + e.getMessage());
+            AWS.errorMsg("toImage: " + pdfUrl + " caused an exception during the HTTP request: " + e.getMessage());
         }
     }
 
@@ -38,10 +40,10 @@ public class Converter {
                 pdfStripper.setEndPage(1);
                 pdfStripper.writeText(document, new java.io.FileWriter(outputFilePath));
             } catch (Exception e) {
-                System.err.println("toHTML: " + pdfUrl + " caused an exception during PDF operations: " + e.getMessage());
+                AWS.errorMsg("toHTML: " + pdfUrl + " caused an exception during PDF operations: " + e.getMessage());
             }
         } catch (Exception e) {
-            System.err.println("toHTML: " + pdfUrl + " caused an exception during the HTTP request: " + e.getMessage());
+            AWS.errorMsg("toHTML: " + pdfUrl + " caused an exception during the HTTP request: " + e.getMessage());
         }
     }
 
@@ -56,13 +58,13 @@ public class Converter {
                 try (java.io.FileWriter writer = new java.io.FileWriter(outputFile)) {
                     writer.write(text);
                 } catch (IOException e) {
-                    System.err.println("toText: " + pdfUrl + " caused an exception during writing to file: " + e.getMessage());
+                    AWS.errorMsg("toText: " + pdfUrl + " caused an exception during writing to file: " + e.getMessage());
                 }
             } catch (Exception e) {
-                System.err.println("toText: " + pdfUrl + " caused an exception during PDF operations: " + e.getMessage());
+                AWS.errorMsg("toText: " + pdfUrl + " caused an exception during PDF operations: " + e.getMessage());
             }
         } catch (Exception e) {
-            System.err.println("toText: " + pdfUrl + " caused an exception during the HTTP request: " + e.getMessage());
+            AWS.errorMsg("toText: " + pdfUrl + " caused an exception during the HTTP request: " + e.getMessage());
         }
     }
 

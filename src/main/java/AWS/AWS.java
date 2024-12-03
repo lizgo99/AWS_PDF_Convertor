@@ -1,7 +1,8 @@
 package AWS;
 
-import jdk.internal.org.jline.terminal.TerminalBuilder;
-import software.amazon.awssdk.core.ResponseBytes;
+import Manager.TaskTracker;
+
+import software.amazon.awssdk.core.ResponseInputStream;
 import software.amazon.awssdk.regions.Region;
 import software.amazon.awssdk.services.ec2.Ec2Client;
 import software.amazon.awssdk.services.ec2.model.Tag;
@@ -13,43 +14,56 @@ import software.amazon.awssdk.services.sqs.model.*;
 
 import java.io.*;
 import java.util.Base64;
+import java.util.List;
+import java.util.concurrent.ConcurrentLinkedQueue;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.stream.Collectors;
 
 public class AWS {
     private final S3Client s3;
     private final SqsClient sqs;
     private final Ec2Client ec2;
 
+    private static String ami = "ami-0f3a384f4dd1ea50d";
+    private static String ManagerScript = "#!/bin/bash\n" +
+            "sudo yum update -y\n" +
+            "sudo yum install -y aws-cli\n" +
+            "sudo yum install -y java-11-amazon-corretto\n" +
+            "sudo wget https://workerjar123.s3.us-west-2.amazonaws.com/Manager.jar -O /home/Manager.jar\n" +
+            "java -cp /home/Manager.jar Manager.Manager > /home/manager_output.log 2>&1";
 
+    private static String WorkerScript = "#!/bin/bash\n" +
+            "sudo yum update -y\n" +
+            "sudo yum install -y aws-cli\n" +
+            "sudo yum install -y java-11-amazon-corretto\n" +
+            "sudo wget https://workerjar123.s3.us-west-2.amazonaws.com/Worker.jar -O /home/Worker.jar\n" +
+            "java -cp /home/Worker.jar Worker.Worker > /home/worker_output.log 2>&1";
 
-    public static String ami = "ami-00e95a9222311e8ed";
-    public static String ManagerScript = "#!/bin/bash\n" +
-            "yum update -y\n" +
-            "yum install -y aws-cli\n" +
-            "aws s3 cp s3://bucket15032000/Manager.jar /home/Manager.jar\n" +
-            "java -cp /home/Manager.jar  Manager\n";
+    private static Region region1 = Region.US_WEST_2;
+    private static Region region2 = Region.US_EAST_1;
 
-
-    public static Region region1 = Region.US_WEST_2;
-    public static Region region2 = Region.US_EAST_1;
-
-    public static boolean DebugOn = true;
-
-    private static String ManagerID;
     private static final AWS instance = new AWS();
 
+    public String bucketName = "input-bucket-910o311";
+    private static boolean DebugOn = true;
+
+    public ConcurrentLinkedQueue<Message> FileTasks = new ConcurrentLinkedQueue<>();
+    public ConcurrentHashMap<String, TaskTracker> TasksMap = new ConcurrentHashMap<>();
+
+    public int MAX_WORKERS = 9;
+    public AtomicBoolean shouldTerminate = new AtomicBoolean(false);
+  
     private AWS() {
         s3 = S3Client.builder().region(region1).build();
         sqs = SqsClient.builder().region(region1).build();
-        ec2 = Ec2Client.builder().region(region1).build();
+        ec2 = Ec2Client.builder().region(region2).build();
+        createBucketIfNotExists(bucketName);
     }
 
     public static AWS getInstance() {
         return instance;
     }
-
-    public String bucketName = "input-bucket-910o3";
-
 
     // S3
     public void createBucketIfNotExists(String bucketName) {
@@ -66,17 +80,16 @@ public class AWS {
                     .bucket(bucketName)
                     .build());
         } catch (S3Exception e) {
-            System.out.println(e.getMessage());
+            debugMsg(e.getMessage());
         }
     }
 
     public String uploadFileToS3(String keyPath, File file) throws Exception {
         System.out.printf("Start upload: %s, to S3\n", file.getName());
-        PutObjectRequest req =
-                PutObjectRequest.builder()
-                        .bucket(bucketName)
-                        .key(keyPath)
-                        .build();
+        PutObjectRequest req = PutObjectRequest.builder()
+                .bucket(bucketName)
+                .key(keyPath)
+                .build();
 
         s3.putObject(req, file.toPath()); // we don't need to check if the file exist already
 
@@ -84,46 +97,89 @@ public class AWS {
         return "s3://" + bucketName + "/" + keyPath;
     }
 
-    public void downloadFileFromS3(String keyPath, File outputFile) {
-        System.out.println("Start downloading file " + keyPath + " to " + outputFile.getPath());
-
-        GetObjectRequest getObjectRequest = GetObjectRequest.builder()
-                .bucket(bucketName)
-                .key(keyPath)
-                .build();
+    public BufferedReader downloadFileFromS3(String s3Url) {
+        debugMsg("Start downloading file " + s3Url);
 
         try {
-            ResponseBytes<GetObjectResponse> objectBytes = s3.getObjectAsBytes(getObjectRequest);
-            byte[] data = objectBytes.asByteArray();
+            // Extract the key from the S3 URL
+            String key = s3Url.replace("s3://" + bucketName + "/", "");
+            
+            GetObjectRequest getObjectRequest = GetObjectRequest.builder()
+                    .bucket(bucketName)
+                    .key(key)
+                    .build();
 
-            // Write the data to a local file.
-            OutputStream os = new FileOutputStream(outputFile);
-            os.write(data);
-            System.out.println("Successfully obtained bytes from an S3 object");
-            os.close();
-        } catch (FileNotFoundException e) {
-            throw new RuntimeException(e);
-        } catch (IOException e) {
-            throw new RuntimeException(e);
+            ResponseInputStream<GetObjectResponse> s3Object = s3.getObject(getObjectRequest);
+            return new BufferedReader(new InputStreamReader(s3Object));
+        } catch (Exception e) {
+            errorMsg("Error downloading file from S3: " + e.getMessage());
+            throw e;
         }
     }
 
-    public void deleteBucket(String bucketName){
-        emptyBucket(bucketName);
-        DeleteBucketRequest deleteBucketRequest =
-                DeleteBucketRequest.builder()
+    public void makeFolderPublic(String folderName) {
+        try {
+            // Create a request to delete the public access block configuration
+            DeletePublicAccessBlockRequest request = DeletePublicAccessBlockRequest.builder()
                     .bucket(bucketName)
                     .build();
+
+            // Delete the public access block configuration
+            s3.deletePublicAccessBlock(request);
+
+            debugMsg("Successfully removed 'Block all public access' for bucket: " + bucketName);
+        } catch (Exception e) {
+            errorMsg("Error removing 'Block all public access': " + e.getMessage());
+        }
+
+        // JSON Bucket Policy
+        String bucketPolicy = "{\n" +
+                "    \"Version\": \"2012-10-17\",\n" +
+                "    \"Statement\": [\n" +
+                "        {\n" +
+                "            \"Sid\": \"PublicAccessToFolder\",\n" +
+                "            \"Effect\": \"Allow\",\n" +
+                "            \"Principal\": \"*\",\n" +
+                "            \"Action\": \"s3:GetObject\",\n" +
+                "            \"Resource\": \"arn:aws:s3:::" + bucketName + "/" + folderName + "/*\"\n" +
+                "        }\n" +
+                "    ]\n" +
+                "}";
+
+        try {
+            // Create and send the PutBucketPolicyRequest
+            PutBucketPolicyRequest policyRequest = PutBucketPolicyRequest.builder()
+                    .bucket(bucketName)
+                    .policy(bucketPolicy)
+                    .build();
+
+            // Apply the policy to the bucket
+            s3.putBucketPolicy(policyRequest);
+
+            debugMsg("Bucket policy updated successfully.");
+        } catch (Exception e) {
+            errorMsg("Error updating bucket policy: " + e.getMessage());
+        }
+    }
+
+    public String getPublicFileUrl(String fileKey) {
+        return String.format("https://%s.s3.%s.amazonaws.com/%s", bucketName, region1, fileKey);
+    }
+
+    public void deleteBucket(String bucketName) {
+        emptyBucket(bucketName);
+        DeleteBucketRequest deleteBucketRequest = DeleteBucketRequest.builder()
+                .bucket(bucketName)
+                .build();
         s3.deleteBucket(deleteBucketRequest);
         debugMsg("Bucket " + bucketName + " has been deleted");
         s3.close();
     }
 
-    public void emptyBucket(String bucketName){
-        ListObjectsRequest listObjectsRequest =
-                ListObjectsRequest.builder()
-                        .bucket(bucketName)
-                        .build();
+    public void emptyBucket(String bucketName) {
+        ListObjectsRequest listObjectsRequest = ListObjectsRequest.builder()
+                .bucket(bucketName)
+                .build();
 
         ListObjectsResponse listObjectsResponse = s3.listObjects(listObjectsRequest);
 
@@ -135,70 +191,93 @@ public class AWS {
                     .key(objectKey)
                     .build();
             s3.deleteObject(deleteRequest);
-            System.out.println("Deleted object: " + objectKey);
+            debugMsg("Deleted object: " + objectKey);
         });
         debugMsg("Finished cleaning bucket " + bucketName);
     }
 
+    // public boolean doesFileExist(String s3Url) {
+    //     try {
+    //         // Extract bucket and key from S3 URL
+    //         String path = s3Url.replace("s3://" + bucketName + "/", "");
+
+    //         HeadObjectRequest request = HeadObjectRequest.builder()
+    //                 .bucket(bucketName)
+    //                 .key(path)
+    //                 .build();
+
+    //         s3.headObject(request);
+    //         return true;
+    //     } catch (S3Exception e) {
+    //         if (e.statusCode() == 404) {
+    //             return false;
+    //         }
+    //         throw e;
+    //     }
+    // }
+
     // EC2
     public String createEC2(String script, String tagName, int numberOfInstances) {
-        Ec2Client ec2 = Ec2Client.builder().region(region1).build();
+        Ec2Client ec2 = Ec2Client.builder().region(region2).build();
         RunInstancesRequest runRequest = (RunInstancesRequest) RunInstancesRequest.builder()
                 .instanceType(InstanceType.T2_MICRO)
                 .imageId(ami)
                 .maxCount(numberOfInstances)
                 .minCount(1)
                 .keyName("vockey")
+                .securityGroups("launch-wizard-1")
                 .iamInstanceProfile(IamInstanceProfileSpecification.builder().name("LabInstanceProfile").build())
                 .userData(Base64.getEncoder().encodeToString((script).getBytes()))
                 .build();
 
-
         RunInstancesResponse response = ec2.runInstances(runRequest);
 
-        String instanceId = response.instances().get(0).instanceId();
+        // Get all instance IDs
+        List<String> instanceIds = response.instances().stream()
+                .map(Instance::instanceId)
+                .collect(Collectors.toList());
 
-        software.amazon.awssdk.services.ec2.model.Tag tag = Tag.builder()
+        // Create tag specifications
+        Tag nameTag = Tag.builder()
                 .key("Name")
                 .value(tagName)
                 .build();
 
-        CreateTagsRequest tagRequest = (CreateTagsRequest) CreateTagsRequest.builder()
-                .resources(instanceId)
-                .tags(tag)
+        // Create tags for all instances at once
+        CreateTagsRequest tagRequest = CreateTagsRequest.builder()
+                .resources(instanceIds)
+                .tags(nameTag)
                 .build();
 
         try {
             ec2.createTags(tagRequest);
-            System.out.printf(
-                    "[DEBUG] Successfully started EC2 instance %s based on AMI %s\n",
-                    instanceId, ami);
-
+            for (String instanceId : instanceIds) {
+                System.out.printf(
+                    "[DEBUG] Successfully started EC2 instance %s with tag %s\n",
+                    instanceId, tagName);
+            }
+            return instanceIds.get(0); // Return first instance ID for backward compatibility
         } catch (Ec2Exception e) {
-            System.err.println("[ERROR] " + e.getMessage());
-            System.exit(1);
+            errorMsg("Error creating EC2 instance: " + e.getMessage());
+            throw e;
         }
-        return instanceId;
-    }
-
-    public synchronized String createManagerIfDoesNotExist() {
-        if (ManagerID == null) {
-            return createEC2(ManagerScript, "Manager", 1);
-        }
-        return ManagerID;
     }
 
     // SQS
     public String createSqsQueue(String queueName) {
-        CreateQueueRequest createQueueRequest = CreateQueueRequest.builder()
-                .queueName(queueName)
-                .build();
+        try {
+            CreateQueueRequest createQueueRequest = CreateQueueRequest.builder()
+                    .queueName(queueName)
+                    .build();
 
-        CreateQueueResponse createQueueResponse = sqs.createQueue(createQueueRequest);
-        String queueUrl = createQueueResponse.queueUrl();
-        System.out.println("Created queue. URL: " + queueUrl);
-        return queueUrl;
-
+            CreateQueueResponse createQueueResponse = sqs.createQueue(createQueueRequest);
+            String queueUrl = createQueueResponse.queueUrl();
+            debugMsg("Created queue. URL: " + queueUrl);
+            return queueUrl;
+        } catch (SqsException e) {
+            errorMsg("Error creating queue: " + e.awsErrorDetails().errorMessage());
+            throw e;
+        }
     }
 
     public void sendMessageToQueue(String queueUrl, String message) {
@@ -217,7 +296,7 @@ public class AWS {
                     .build();
 
             SendMessageResponse sendResponse = sqs.sendMessage(sendMsgRequest);
-            System.out.println("Message sent. MessageId: " + sendResponse.messageId());
+            debugMsg("Message sent. MessageId: " + sendResponse.messageId());
         } catch (SqsException e) {
             errorMsg("Error sending message: " + e.awsErrorDetails().errorMessage());
             throw e;
@@ -246,6 +325,7 @@ public class AWS {
             ReceiveMessageRequest receiveRequest = ReceiveMessageRequest.builder()
                     .queueUrl(queueUrl)
                     .maxNumberOfMessages(1)
+                    .visibilityTimeout(30)  // ? is this a good number?
                     .build();
 
             ReceiveMessageResponse receiveResponse = sqs.receiveMessage(receiveRequest);
@@ -258,6 +338,27 @@ public class AWS {
             return message;
         } catch (SqsException e) {
             errorMsg("Error receiving message: " + e.awsErrorDetails().errorMessage());
+            throw e;
+        }
+    }
+
+    public List<Message> pollMessages(String queueUrl) {
+        try {
+            ReceiveMessageRequest receiveRequest = ReceiveMessageRequest.builder()
+                    .queueUrl(queueUrl)
+                    .maxNumberOfMessages(10) // what if there are more than 10 messages?
+                    .build();
+
+            ReceiveMessageResponse receiveResponse = sqs.receiveMessage(receiveRequest);
+            if (receiveResponse.messages().isEmpty()) {
+                return null;
+            }
+
+            List<Message> messages = receiveResponse.messages();
+            debugMsg("Messages received. Number of messages: " + messages.size());
+            return messages;
+        } catch (SqsException e) {
+            errorMsg("Error receiving messages: " + e.awsErrorDetails().errorMessage());
             throw e;
         }
     }
@@ -285,39 +386,28 @@ public class AWS {
             GetQueueUrlResponse getQueueResponse = sqs.getQueueUrl(getQueueRequest);
             return getQueueResponse.queueUrl();
         } catch (SqsException e) {
-            System.err.println("Error connecting to queue: " + e.awsErrorDetails().errorMessage());
+            errorMsg("Error connecting to queue: " + e.awsErrorDetails().errorMessage());
             throw e;
         }
     }
 
     public void startManagerIfNotActive() {
-
-        // // Describe instances with the specified tag
-        // DescribeInstancesResponse response = ec2.describeInstances(
-        //         DescribeInstancesRequest.builder().filters(
-        //                 Filter.builder()
-        //                         .name("tag:" + "Name")
-        //                         .values("Manager")
-        //                         .build()
-        //         ).build()
-        // );
-
         // Check if any instances were found
-        if(!isManagerActive()){
-            createEC2(ManagerScript, "Manager", 1);
-            System.out.print("[DEBUG] LocalApp - Manager created\n");
+        if (!isManagerActive()) {
+            createEC2(ManagerScript,  Label.Manager.name(), 1);
+            debugMsg("LocalApp created a Manager EC2 instance\n");
         }
     }
 
-    public boolean isManagerActive(){
+    public boolean isManagerActive() {
         DescribeInstancesRequest request = DescribeInstancesRequest.builder().build();
         DescribeInstancesResponse response = ec2.describeInstances(request);
         for (Reservation reservation : response.reservations()) {
             for (Instance instance : reservation.instances()) {
-                for(Tag tag : instance.tags()){
-                    if((instance.state().name()==InstanceStateName.RUNNING ||
-                            instance.state().name()==InstanceStateName.PENDING) &&
-                            tag.key().equals("Name") && tag.value().equals("MANAGER")){
+                for (Tag tag : instance.tags()) {
+                    if ((instance.state().name() == InstanceStateName.RUNNING ||
+                            instance.state().name() == InstanceStateName.PENDING) &&
+                            tag.key().equals("Name") && tag.value().equals("Manager")) {
                         return true;
                     }
                 }
@@ -327,19 +417,164 @@ public class AWS {
     }
 
     // Output functions
-    public static void debugMsg (String msg){
-        if (DebugOn){
+    public static void debugMsg(String msg) {
+        if (DebugOn) {
             String blueBold = "\033[1;34m";
             String reset = "\033[0m";
             System.out.println(blueBold + "[DEBUG] " + reset + msg);
         }
     }
 
-    public static void errorMsg (String msg){
+    public static void errorMsg(String msg) {
         String redBold = "\033[1;31m";
         String reset = "\033[0m";
         System.out.println(redBold + "[ERROR] " + reset + msg);
     }
 
-}
+    public int getQueueMessageCount(String queueUrl) {
+        try {
+            GetQueueAttributesResponse response = sqs.getQueueAttributes(builder -> builder
+                    .queueUrl(queueUrl)
+                    .attributeNames(QueueAttributeName.APPROXIMATE_NUMBER_OF_MESSAGES));
+            return Integer.parseInt(response.attributes().get(QueueAttributeName.APPROXIMATE_NUMBER_OF_MESSAGES));
+        } catch (Exception e) {
+            errorMsg("Error getting queue message count: " + e.getMessage());
+            return 0;
+        }
+    }
 
+    public void startWorkerInstances(int numberOfInstances) {
+        try {
+            createEC2(WorkerScript, "Worker", numberOfInstances);
+            debugMsg("Started " + numberOfInstances + " worker instances");
+        } catch (Exception e) {
+            errorMsg("Failed to start worker instance: " + e.getMessage());
+        }
+    }
+
+    public void terminateAllWorkerInstances() {
+        try {
+            DescribeInstancesRequest request = DescribeInstancesRequest.builder().build();
+            DescribeInstancesResponse response = ec2.describeInstances(request);
+
+            for (Reservation reservation : response.reservations()) {
+                for (Instance instance : reservation.instances()) {
+                    for (Tag tag : instance.tags()) {
+                        if (tag.key().equals("Name") && tag.value().equals("Worker") &&
+                                (instance.state().name() == InstanceStateName.RUNNING ||
+                                instance.state().name() == InstanceStateName.PENDING)) {
+                            terminateInstance(instance.instanceId());
+                        }
+                    }
+                }
+            }
+        } catch (Exception e) {
+            errorMsg("Failed to terminate worker instances: " + e.getMessage());
+        }
+    }
+
+    private void terminateInstance(String instanceId) {
+        try {
+            TerminateInstancesRequest request = TerminateInstancesRequest.builder()
+                    .instanceIds(instanceId)
+                    .build();
+            ec2.terminateInstances(request);
+            debugMsg("Instance terminated: " + instanceId);
+        } catch (Exception e) {
+            errorMsg("Failed to terminate instance " + instanceId + ": " + e.getMessage());
+        }
+    }
+
+    public void changeVisibilityTimeout(String queueUrl, String receiptHandle, int timeout) {
+        ChangeMessageVisibilityRequest request = ChangeMessageVisibilityRequest.builder()
+                .queueUrl(queueUrl)
+                .receiptHandle(receiptHandle)
+                .visibilityTimeout(timeout)
+                .build();
+        sqs.changeMessageVisibility(request);
+        debugMsg("Visibility timeout changed for message " + receiptHandle);
+    }
+
+    public void setTerminate(boolean terminate) {
+        this.shouldTerminate.set(terminate);
+    }
+
+    public List<Instance> getAllInstances() {
+        DescribeInstancesRequest describeInstancesRequest = DescribeInstancesRequest.builder().build();
+        DescribeInstancesResponse describeInstancesResponse = ec2.describeInstances(describeInstancesRequest);
+        ;
+        return describeInstancesResponse.reservations().stream()
+                .flatMap(r -> r.instances().stream())
+                .collect(Collectors.toList());
+    }
+
+    public List<Instance> getAllInstancesWithLabel(Label label) throws InterruptedException {
+        DescribeInstancesRequest describeInstancesRequest = DescribeInstancesRequest.builder()
+                .filters(Filter.builder()
+                        .name("tag:Label")
+                        .values(label.toString())
+                        .build())
+                .build();
+
+        DescribeInstancesResponse describeInstancesResponse = ec2.describeInstances(describeInstancesRequest);
+
+        return describeInstancesResponse.reservations().stream()
+                .flatMap(r -> r.instances().stream())
+                .collect(Collectors.toList());
+    }
+
+    public enum Label {
+        Manager,
+        Worker
+    }
+
+    public void terminateManagerInstance() {
+        try {
+            terminateAllWorkerInstances();
+            Thread.sleep(5000);
+
+            DescribeInstancesRequest request = DescribeInstancesRequest.builder().build();
+            DescribeInstancesResponse response = ec2.describeInstances(request);
+
+            for (Reservation reservation : response.reservations()) {
+                for (Instance instance : reservation.instances()) {
+                    for (Tag tag : instance.tags()) {
+                        if (tag.key().equals("Name") && tag.value().equals("Manager") &&
+                            (instance.state().name() == InstanceStateName.RUNNING ||
+                             instance.state().name() == InstanceStateName.PENDING)) {
+                            terminateInstance(instance.instanceId());
+                        }
+                    }
+                }
+            }
+        } catch (Exception e) {
+            errorMsg("Failed to terminate manager instance: " + e.getMessage());
+        }
+    }
+
+    public void cleanup() {
+        try {
+            // First terminate all instances
+            terminateAllWorkerInstances();
+            terminateManagerInstance();
+            
+            // Keep clients open until the very end
+            try {
+                Thread.sleep(5000); // Wait for instance termination to complete
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+            }
+            
+            // Finally close the clients
+            try {
+                ec2.close();
+                s3.close();
+                sqs.close();
+            } catch (Exception e) {
+                errorMsg("Error closing AWS clients: " + e.getMessage());
+            }
+        } catch (Exception e) {
+            errorMsg("Error during cleanup: " + e.getMessage());
+        }
+    }
+}
