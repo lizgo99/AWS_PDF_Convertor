@@ -202,7 +202,7 @@ public class Manager {
                 AWS.debugMsg("Manager: Worker completed operation: " + operation + " for PDF: " + pdfUrl);
 
                 for (TaskTracker taskTracker : TasksMap.values()) {
-                    if (taskTracker.addResult(pdfUrl, operation + ": " + pdfUrl + " - " + outputUrlOrErrorMsg)) {
+                    if (taskTracker.addResult(pdfUrl, operation + ": " + pdfUrl + " " + outputUrlOrErrorMsg)) {
                         AWS.debugMsg("Manager: Added result to task tracker for: " + pdfUrl);
                         if (taskTracker.isAllCompleted()) {
                             AWS.debugMsg(
@@ -234,6 +234,7 @@ public class Manager {
 
             String summaryFileUrl = aws.uploadFileToS3(summaryKey, summaryFile);
             AWS.debugMsg("Manager: Uploaded summary file to S3: " + summaryFileUrl);
+//            aws.makeFolderPublic("outputs");
             aws.sendMessageToQueue(managerToLocalAppQueueUrl, summaryFileUrl);
             TasksMap.remove(taskTracker.getInputFileUrl());
             Files.delete(summaryFile.toPath());

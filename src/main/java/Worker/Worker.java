@@ -72,6 +72,7 @@ public class Worker {
                 String s3Key = "outputs/" + outputFileName;
                 String outputUrl = aws.uploadFileToS3(s3Key, outputFile);
                 AWS.debugMsg("Uploaded to S3: " + outputUrl);
+                outputUrl = aws.getPublicFileUrl(s3Key);
                 aws.sendMessageToQueue(WorkersToManagerQueueUrl, operation + "\t" + pdfUrl + "\t" + outputUrl);
                 AWS.debugMsg("Sent to Manager: " + pdfUrl + "\t" + outputUrl + "\t" + operation);
                 aws.deleteMessageFromQueue(ManagerToWorkersQueueUrl, receiptHandle);

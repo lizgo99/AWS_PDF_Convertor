@@ -1,127 +1,193 @@
 package LocalApp;
 
-import AWS.AWS;
-import software.amazon.awssdk.services.sqs.model.Message;
+import software.amazon.awssdk.core.ResponseBytes;
+import software.amazon.awssdk.core.exception.AbortedException;
+import software.amazon.awssdk.core.pagination.sync.SdkIterable;
+import software.amazon.awssdk.regions.Region;
+import software.amazon.awssdk.services.ec2.Ec2Client;
+import software.amazon.awssdk.services.ec2.model.Tag;
+import software.amazon.awssdk.services.ec2.model.*;
+import software.amazon.awssdk.services.s3.S3Client;
+import software.amazon.awssdk.services.s3.model.*;
+import software.amazon.awssdk.services.s3.paginators.ListObjectsV2Iterable;
+import software.amazon.awssdk.services.sqs.SqsClient;
+import software.amazon.awssdk.services.sqs.model.*;
 
 import java.io.*;
-import java.util.HashSet;
+import java.nio.charset.StandardCharsets;
+import java.util.*;
+import java.util.concurrent.atomic.AtomicInteger;
+import AWS.AWS;
 
 public class LocalApp {
-    private static final AWS aws = AWS.getInstance();
-    private static final HashSet<String> queueUrls = new HashSet<>();
-    private static boolean shouldTerminate;
 
-    public static void main(String[] args) {
-        long startTime = System.currentTimeMillis();
-        if (args.length < 3) {
-            AWS.errorMsg("Usage: java -jar LocalApp.jar inputFileName outputFileName n [terminate]");
-            System.exit(1);
-        }
+    final static AWS aws = AWS.getInstance();
+    private static String RESULT_QUEUE_URL = null;
+    public static String inputFileName = "input-sample-2.txt";
 
-        String inputFileName = args[0];
-        String outputFileName = args[1];
-        int numOfPdfsPerWorker = Integer.parseInt(args[2]);
-        shouldTerminate = args.length == 4 && args[3].equals("terminate");
+    public static HashSet<String> QueueUrls = new HashSet<>();
 
-        try {
-            AWS.debugMsg("LocalApp: Starting request processing at " + new java.util.Date());
-            processRequest(inputFileName, outputFileName, numOfPdfsPerWorker, shouldTerminate);
-            long endTime = System.currentTimeMillis();
-            AWS.debugMsg("Total execution time: " + formatDuration(endTime - startTime));
-        } catch (Exception e) {
-            AWS.errorMsg("Error processing request: " + e.getMessage());
-            cleanup();
-            System.exit(1);
-        }
-    }
+    public static void main(String[] args) throws Exception {
+        //read from terminal >java -jar yourjar.jar inputFileName outputFileName n [terminate]
+//        if (args.length < 3) {
+//            System.err.println("Usage: java -jar LocalApp.jar inputFileName outputFileName n [terminate]");
+//            System.exit(1);
+//        }
+//
+//        String inputFileName = args[0];
+//        System.out.println("inputFileName: " + inputFileName);
+//        String outputFileName = args[1];
+//        System.out.println("outputFileName: " + outputFileName);
+//        int n = Integer.parseInt(args[2]);
+//        boolean terminate = args.length > 3 && args[3].equals("terminate");
+        int pdfsPerWorker = 10;
+        File inputFile = new File(inputFileName);
 
-    private static void processRequest(String inputFileName, String outputFileName, int numOfPdfsPerWorker,
-            boolean shouldTerminate) throws Exception {
-        long operationStartTime = System.currentTimeMillis();
-        // Create necessary queues
-        // check if the queue already exists
-        String localAppToManagerQueueUrl = aws.createSqsQueue("LocalAppToManager");
-        String managerToLocalAppQueueUrl = aws.createSqsQueue("ManagerToLocalApp");
-        queueUrls.add(localAppToManagerQueueUrl);
-        queueUrls.add(managerToLocalAppQueueUrl);
-
-        // Start manager if not active
+        // Create manager if one doesn't exist
         aws.startManagerIfNotActive();
 
-        // Upload input file to S3
-        File inputFile = new File(inputFileName);
-        if (!inputFile.exists()) {
-            throw new FileNotFoundException("Input file not found: " + inputFileName);
-        }
-        String s3InputFileUrl = aws.uploadFileToS3("inputs/" + inputFileName, inputFile);
+        // Create a bucket and upload the file
+        aws.createBucketIfNotExists(aws.bucketName);
+        String fileLocation =  aws.uploadFileToS3("inputs/" + inputFile.getName(), inputFile);
 
-        // Send task to manager
-        aws.sendMessageToQueue(localAppToManagerQueueUrl, s3InputFileUrl + "\t" + String.valueOf(numOfPdfsPerWorker));
+        // Create a new SQS queue
+        String queueName = "LocalAppToManager";
+        String queueUrl = aws.createSqsQueue(queueName);
+        QueueUrls.add(queueUrl);
 
-        // Wait for response
-        AWS.debugMsg("LocalApp: Waiting for manager to process files at " + new java.util.Date());
-        long waitStartTime = System.currentTimeMillis();
-        String summaryFileUrl = waitForResponse(managerToLocalAppQueueUrl);
-        long waitEndTime = System.currentTimeMillis();
-        AWS.debugMsg(
-                "LocalApp: Received response from manager. Wait time: " + formatDuration(waitEndTime - waitStartTime));
-        if (summaryFileUrl != null) {
-            createHtmlOutput(summaryFileUrl, outputFileName);
+        // Upload file location to the SQS
+        aws.sendMessageToQueue(queueUrl, fileLocation + "\t" + Integer.toString(pdfsPerWorker));
+
+        RESULT_QUEUE_URL = aws.createSqsQueue("ManagerToLocalApp");
+        QueueUrls.add(queueUrl);
+
+        String summeryURL = waitForSummaryFile();
+
+        if (summeryURL != null) {
+            File summeryFile = new File("summery.txt");
+            try (BufferedReader output = aws.downloadFileFromS3(summeryURL); FileWriter writer = new FileWriter(summeryFile)) {
+                String line;
+                while ((line = output.readLine()) != null) {
+                    writer.write(line + "\n");
+                }
+                writer.flush();
+                File outputFile = new File("output1.html");
+
+                createHTMLFile(summeryFile.getPath(), outputFile.getPath());
+
+                System.out.println("outputFile: " + outputFile.getPath());
+            }
         }
 
-        // Send terminate message if requested
-        if (shouldTerminate) {
-            aws.sendMessageToQueue(localAppToManagerQueueUrl, "terminate");
-        }
+        aws.makeFolderPublic("outputs");
 
         cleanup();
+
+
+
+
     }
 
-    /**
-     * Waits for the Manager to complete processing all PDF files and return a
-     * summary
-     * Uses a polling mechanism with a timeout to prevent indefinite waiting
-     *
-     * @param queueUrl The SQS queue URL where the Manager will send the response
-     * @return The S3 URL of the summary file containing all PDF processing results
-     * @throws RuntimeException if no response is received within the timeout period
-     */
-    private static String waitForResponse(String queueUrl) {
+    public static String waitForSummaryFile() {
+
+        String summaryFileUrl = null;
         long startTime = System.currentTimeMillis();
-        long timeout = 15 * 60 * 1000;
+        try {
+            System.out.println("Waiting for summary file...");
 
-        while (System.currentTimeMillis() - startTime < timeout) {
-            Message message = aws.getMessageFromQueue(queueUrl);
+            boolean summaryReceived = false;
 
-            if (message != null) {
-                String summaryFileUrl = message.body();
-                AWS.debugMsg("Received summary file URL: " + summaryFileUrl);
-                aws.deleteMessageFromQueue(queueUrl, message.receiptHandle());
-                return summaryFileUrl;
+            while (!summaryReceived) {
+                // Poll the ResultQueue for a message
+                ReceiveMessageRequest receiveRequest = ReceiveMessageRequest.builder()
+                        .queueUrl(RESULT_QUEUE_URL)
+                        .maxNumberOfMessages(1) // Fetch one message at a time
+                        .waitTimeSeconds(5)    // Long polling for 5 seconds
+                        .build();
+
+                List<Message> messages = aws.pollMessages(RESULT_QUEUE_URL);
+                if (messages != null) {
+                    for (Message message : messages) {
+                        // Process the message
+                        System.out.println("Received message: " + message.body());
+
+                        // Assuming the message contains the summary file URL in JSON format
+                        summaryFileUrl = message.body();
+                        System.out.println("Summary file is available at: " + summaryFileUrl);
+
+                        // Mark the summary as received and exit loop
+                        summaryReceived = true;
+
+                        // Delete the processed message from the queue
+                        aws.deleteMessageFromQueue(RESULT_QUEUE_URL, message.receiptHandle());
+                        break; // Exit the loop after processing a valid message
+                    }
+                }
             }
+        } catch (Exception e) {
+            System.err.println("Error waiting for summary file: " + e.getMessage());
+        }
+        long finishTime = System.currentTimeMillis();
+        AWS.debugMsg("Waiting time: " + (finishTime - startTime)/1000 + " seconds");
+        return summaryFileUrl;
+    }
 
-            try {
-                Thread.sleep(1000);
-            } catch (InterruptedException e) {
-                Thread.currentThread().interrupt();
-                return null;
+//    // Helper method to extract the summary file URL from the message body
+//    private static String extractSummaryFileUrl(String messageBody) {
+//        // Assume the message body is in JSON format: {"summaryFileUrl": "s3://my-bucket/summary.html"}
+//        // Parse it to extract the S3 URL (use a JSON library if needed)
+//        if (messageBody.contains("summaryFileUrl")) {
+//            return messageBody.split(":")[1].replace("}", "").replace("\"", "").trim();
+//        }
+//        return "Unknown";
+//    }
+
+    public static void createHTMLFile(String summaryFilePath, String outputHtmlPath) {
+        StringBuilder htmlContent = new StringBuilder();
+        htmlContent.append("<!DOCTYPE html>\n<html>\n<head>\n<title>PDF Processing Summary</title>\n</head>\n<body>\n");
+        htmlContent.append("<h1>PDF Processing Summary</h1>\n");
+        htmlContent.append("<table border=\"1\">\n<tr><th>Operation</th><th>Input File</th><th>Result</th></tr>\n");
+
+        try (BufferedReader reader = new BufferedReader(new FileReader(summaryFilePath))) {
+            String line;
+            while ((line = reader.readLine()) != null) {
+                String[] parts = line.split(" ", 3); // Split into operation, input, and result
+                if (parts.length < 3) continue; // Skip malformed lines
+                String operation = parts[0];
+                String inputUrl = parts[1];
+                String result = parts[2].replace(" ", "");
+
+                htmlContent.append("<tr>");
+                htmlContent.append("<td>").append(operation).append("</td>");
+                htmlContent.append("<td><a href=\"").append(inputUrl).append("\">").append(inputUrl).append("</a></td>");
+                if (result.startsWith("Operation failed")) {
+                    htmlContent.append("<td>").append(result).append("</td>");
+                } else {
+                    htmlContent.append("<td><a href=\"").append(result).append("\">Output File</a></td>");
+                }
+                htmlContent.append("</tr>\n");
             }
+        } catch (Exception e) {
+            System.err.println("Error reading summary file: " + e.getMessage());
         }
 
-        throw new RuntimeException("Timeout waiting for response after " + (timeout / 1000) + " seconds");
+        htmlContent.append("</table>\n</body>\n</html>");
+
+        try (FileWriter writer = new FileWriter(outputHtmlPath)) {
+            writer.write(htmlContent.toString());
+            System.out.println("HTML file created: " + outputHtmlPath);
+        } catch (Exception e) {
+            System.err.println("Error writing HTML file: " + e.getMessage());
+        }
     }
 
-    private static void createHtmlOutput(String summaryFileUrl, String outputFileName) {
-    }
-
-    private static void cleanup() {
-        
-    }
-
-    private static String formatDuration(long milliseconds) {
-        long seconds = milliseconds / 1000;
-        long minutes = seconds / 60;
-        seconds = seconds % 60;
-        return String.format("%d minutes, %d seconds", minutes, seconds);
+    public static void cleanup(){
+        // Delete all the queues
+        for (String queueUrl : QueueUrls){
+            aws.deleteQueue(queueUrl);
+            QueueUrls.remove(queueUrl);
+        }
+        // Delete all the buckets - files inside the bucket
+        //aws.deleteBucket(aws.bucketName);
     }
 }

@@ -30,14 +30,14 @@ public class AWS {
             "sudo yum update -y\n" +
             "sudo yum install -y aws-cli\n" +
             "sudo yum install -y java-11-amazon-corretto\n" +
-            "sudo wget https://bucketforjars.s3.us-west-2.amazonaws.com/Manager.jar -O /home/Manager.jar\n" +
+            "sudo wget https://workerjar123.s3.us-west-2.amazonaws.com/Manager.jar -O /home/Manager.jar\n" +
             "java -cp /home/Manager.jar Manager.Manager > /home/manager_output.log 2>&1";
 
     private static String WorkerScript = "#!/bin/bash\n" +
             "sudo yum update -y\n" +
             "sudo yum install -y aws-cli\n" +
             "sudo yum install -y java-11-amazon-corretto\n" +
-            "sudo wget https://bucketforjars.s3.us-west-2.amazonaws.com/Worker.jar -O /home/Worker.jar\n" +
+            "sudo wget https://workerjar123.s3.us-west-2.amazonaws.com/Worker.jar -O /home/Worker.jar\n" +
             "java -cp /home/Worker.jar Worker.Worker > /home/worker_output.log 2>&1";
 
     private static Region region1 = Region.US_WEST_2;
@@ -45,7 +45,7 @@ public class AWS {
 
     private static final AWS instance = new AWS();
 
-    public String bucketName = "input-bucket-910o31";
+    public String bucketName = "input-bucket-910o311";
     private static boolean DebugOn = true;
 
     public ConcurrentLinkedQueue<Message> FileTasks = new ConcurrentLinkedQueue<>();
@@ -115,6 +115,55 @@ public class AWS {
             errorMsg("Error downloading file from S3: " + e.getMessage());
             throw e;
         }
+    }
+
+    public void makeFolderPublic(String folderName) {
+        try {
+            // Create a request to delete the public access block configuration
+            DeletePublicAccessBlockRequest request = DeletePublicAccessBlockRequest.builder()
+                    .bucket(bucketName)
+                    .build();
+
+            // Delete the public access block configuration
+            s3.deletePublicAccessBlock(request);
+
+            debugMsg("Successfully removed 'Block all public access' for bucket: " + bucketName);
+        } catch (Exception e) {
+            errorMsg("Error removing 'Block all public access': " + e.getMessage());
+        }
+
+        // JSON Bucket Policy
+        String bucketPolicy = "{\n" +
+                "    \"Version\": \"2012-10-17\",\n" +
+                "    \"Statement\": [\n" +
+                "        {\n" +
+                "            \"Sid\": \"PublicAccessToFolder\",\n" +
+                "            \"Effect\": \"Allow\",\n" +
+                "            \"Principal\": \"*\",\n" +
+                "            \"Action\": \"s3:GetObject\",\n" +
+                "            \"Resource\": \"arn:aws:s3:::" + bucketName + "/" + folderName + "/*\"\n" +
+                "        }\n" +
+                "    ]\n" +
+                "}";
+
+        try {
+            // Create and send the PutBucketPolicyRequest
+            PutBucketPolicyRequest policyRequest = PutBucketPolicyRequest.builder()
+                    .bucket(bucketName)
+                    .policy(bucketPolicy)
+                    .build();
+
+            // Apply the policy to the bucket
+            s3.putBucketPolicy(policyRequest);
+
+            debugMsg("Bucket policy updated successfully.");
+        } catch (Exception e) {
+            errorMsg("Error updating bucket policy: " + e.getMessage());
+        }
+    }
+
+    public String getPublicFileUrl(String fileKey) {
+        return String.format("https://%s.s3.%s.amazonaws.com/%s", bucketName, region1, fileKey);
     }
 
     public void deleteBucket(String bucketName) {
@@ -345,8 +394,8 @@ public class AWS {
     public void startManagerIfNotActive() {
         // Check if any instances were found
         if (!isManagerActive()) {
-            createEC2(ManagerScript, "Manager", 1);
-            System.out.print("[DEBUG] LocalApp created a Manager EC2 instance\n");
+            createEC2(ManagerScript,  Label.Manager.name(), 1);
+            debugMsg("LocalApp created a Manager EC2 instance\n");
         }
     }
 
