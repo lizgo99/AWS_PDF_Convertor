@@ -13,6 +13,7 @@ import software.amazon.awssdk.services.sqs.model.*;
 
 import java.io.*;
 import java.util.Base64;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 public class AWS {
     private final S3Client s3;
@@ -32,6 +33,9 @@ public class AWS {
     public static Region region1 = Region.US_WEST_2;
     public static Region region2 = Region.US_EAST_1;
 
+    public static boolean DebugOn = true;
+
+    private static String ManagerID;
     private static final AWS instance = new AWS();
 
     private AWS() {
@@ -44,8 +48,8 @@ public class AWS {
         return instance;
     }
 
-    public String bucketName = "input-bucket-910o31";
-    private static boolean DebugOn = true;
+    public String bucketName = "input-bucket-910o3";
+
 
     // S3
     public void createBucketIfNotExists(String bucketName) {
@@ -177,6 +181,13 @@ public class AWS {
         return instanceId;
     }
 
+    public synchronized String createManagerIfDoesNotExist() {
+        if (ManagerID == null) {
+            return createEC2(ManagerScript, "Manager", 1);
+        }
+        return ManagerID;
+    }
+
     // SQS
     public String createSqsQueue(String queueName) {
         CreateQueueRequest createQueueRequest = CreateQueueRequest.builder()
@@ -219,12 +230,12 @@ public class AWS {
                     .queueUrl(queueUrl)
                     .build();
 
-            sqsClient.deleteQueue(deleteRequest);
+            sqs.deleteQueue(deleteRequest);
             debugMsg("Queue deleted successfully: " + queueUrl);
         } catch (Exception e) {
             errorMsg("Error deleting the queue (" + queueUrl + "):" + e.getMessage());
         } finally {
-            sqsClient.close();
+            sqs.close();
         }
     }
 

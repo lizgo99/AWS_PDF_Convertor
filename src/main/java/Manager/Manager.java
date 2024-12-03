@@ -108,16 +108,10 @@ public class Manager {
     }
 
 
-
-    public static void createWorkerNodes (int tasksPerWorker, String queueURL) {
-
-        if (numberOfActiveWorkers < taskCounter && numberOfActiveWorkers < MAX_INSTANCES)  {
-            int numberOfInstances = min(taskCounter - numberOfActiveWorkers, tasksPerWorker - numberOfActiveWorkers);
-            for (int i = 0; i < numberOfInstances; i++){
-                // TODO: add worker script
-                aws.createEC2("worker script", "worker", 1);
-            }
-            numberOfActiveWorkers += numberOfInstances;
-        }
+//        if (numberOfActiveWorkers < taskCounter && numberOfActiveWorkers < 9)  {
+//            int numberOfInstances = min(taskCounter - numberOfActiveWorkers, tasksPerWorker - numberOfActiveWorkers);
+//            aws.createEC2("worker script", "worker", numberOfInstances);
+//            numberOfActiveWorkers += numberOfInstances;
+//        }
     }
 }
