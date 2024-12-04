@@ -1,30 +1,30 @@
 package LocalApp;
 
-import software.amazon.awssdk.core.ResponseBytes;
-import software.amazon.awssdk.core.exception.AbortedException;
-import software.amazon.awssdk.core.pagination.sync.SdkIterable;
-import software.amazon.awssdk.regions.Region;
-import software.amazon.awssdk.services.ec2.Ec2Client;
-import software.amazon.awssdk.services.ec2.model.Tag;
-import software.amazon.awssdk.services.ec2.model.*;
-import software.amazon.awssdk.services.s3.S3Client;
-import software.amazon.awssdk.services.s3.model.*;
-import software.amazon.awssdk.services.s3.paginators.ListObjectsV2Iterable;
-import software.amazon.awssdk.services.sqs.SqsClient;
+//import software.amazon.awssdk.core.ResponseBytes;
+//import software.amazon.awssdk.core.exception.AbortedException;
+//import software.amazon.awssdk.core.pagination.sync.SdkIterable;
+//import software.amazon.awssdk.regions.Region;
+//import software.amazon.awssdk.services.ec2.Ec2Client;
+//import software.amazon.awssdk.services.ec2.model.Tag;
+//import software.amazon.awssdk.services.ec2.model.*;
+//import software.amazon.awssdk.services.s3.S3Client;
+//import software.amazon.awssdk.services.s3.model.*;
+//import software.amazon.awssdk.services.s3.paginators.ListObjectsV2Iterable;
+//import software.amazon.awssdk.services.sqs.SqsClient;
 import software.amazon.awssdk.services.sqs.model.*;
 
 import java.io.*;
-import java.nio.charset.StandardCharsets;
+//import java.nio.charset.StandardCharsets;
 import java.util.*;
-import java.util.concurrent.atomic.AtomicInteger;
-import AWS.AWS;
+//import java.util.concurrent.atomic.AtomicInteger;
+
 
 public class LocalApp {
 
     final static AWS aws = AWS.getInstance();
     private static String RESULT_QUEUE_URL = null;
     public static String inputFileName = "input-sample-2.txt";
-
+    private static final String bucketName = AWS.generateRandomBucketName("local");
     public static HashSet<String> QueueUrls = new HashSet<>();
 
     public static void main(String[] args) throws Exception {
@@ -35,9 +35,9 @@ public class LocalApp {
 //        }
 //
 //        String inputFileName = args[0];
-//        System.out.println("inputFileName: " + inputFileName);
+//        aws.debugMsg("inputFileName: " + inputFileName);
 //        String outputFileName = args[1];
-//        System.out.println("outputFileName: " + outputFileName);
+//        aws.debugMsg("outputFileName: " + outputFileName);
 //        int n = Integer.parseInt(args[2]);
 //        boolean terminate = args.length > 3 && args[3].equals("terminate");
         int pdfsPerWorker = 10;
@@ -47,8 +47,8 @@ public class LocalApp {
         aws.startManagerIfNotActive();
 
         // Create a bucket and upload the file
-        aws.createBucketIfNotExists(aws.bucketName);
-        String fileLocation =  aws.uploadFileToS3("inputs/" + inputFile.getName(), inputFile);
+        aws.createBucketIfNotExists(bucketName);
+        String fileLocation =  aws.uploadFileToS3(bucketName, "inputs/" + inputFile.getName(), inputFile);
 
         // Create a new SQS queue
         String queueName = "LocalAppToManager";
@@ -56,7 +56,7 @@ public class LocalApp {
         QueueUrls.add(queueUrl);
 
         // Upload file location to the SQS
-        aws.sendMessageToQueue(queueUrl, fileLocation + "\t" + Integer.toString(pdfsPerWorker));
+        aws.sendMessageToQueue(queueUrl, fileLocation + "\t" + pdfsPerWorker);
 
         RESULT_QUEUE_URL = aws.createSqsQueue("ManagerToLocalApp");
         QueueUrls.add(queueUrl);
@@ -65,7 +65,7 @@ public class LocalApp {
 
         if (summeryURL != null) {
             File summeryFile = new File("summery.txt");
-            try (BufferedReader output = aws.downloadFileFromS3(summeryURL); FileWriter writer = new FileWriter(summeryFile)) {
+            try (BufferedReader output = aws.downloadFileFromS3(bucketName, summeryURL); FileWriter writer = new FileWriter(summeryFile)) {
                 String line;
                 while ((line = output.readLine()) != null) {
                     writer.write(line + "\n");
@@ -75,11 +75,11 @@ public class LocalApp {
 
                 createHTMLFile(summeryFile.getPath(), outputFile.getPath());
 
-                System.out.println("outputFile: " + outputFile.getPath());
+                AWS.debugMsg("outputFile: " + outputFile.getPath());
             }
         }
 
-        aws.makeFolderPublic("outputs");
+        aws.makeFolderPublic(bucketName,"outputs");
 
         cleanup();
 
@@ -93,27 +93,22 @@ public class LocalApp {
         String summaryFileUrl = null;
         long startTime = System.currentTimeMillis();
         try {
-            System.out.println("Waiting for summary file...");
+            AWS.debugMsg("Waiting for summary file...");
 
             boolean summaryReceived = false;
 
             while (!summaryReceived) {
                 // Poll the ResultQueue for a message
-                ReceiveMessageRequest receiveRequest = ReceiveMessageRequest.builder()
-                        .queueUrl(RESULT_QUEUE_URL)
-                        .maxNumberOfMessages(1) // Fetch one message at a time
-                        .waitTimeSeconds(5)    // Long polling for 5 seconds
-                        .build();
 
                 List<Message> messages = aws.pollMessages(RESULT_QUEUE_URL);
                 if (messages != null) {
                     for (Message message : messages) {
                         // Process the message
-                        System.out.println("Received message: " + message.body());
+                        AWS.debugMsg("Received message: " + message.body());
 
                         // Assuming the message contains the summary file URL in JSON format
                         summaryFileUrl = message.body();
-                        System.out.println("Summary file is available at: " + summaryFileUrl);
+                        AWS.debugMsg("Summary file is available at: " + summaryFileUrl);
 
                         // Mark the summary as received and exit loop
                         summaryReceived = true;
@@ -131,16 +126,6 @@ public class LocalApp {
         AWS.debugMsg("Waiting time: " + (finishTime - startTime)/1000 + " seconds");
         return summaryFileUrl;
     }
-
-//    // Helper method to extract the summary file URL from the message body
-//    private static String extractSummaryFileUrl(String messageBody) {
-//        // Assume the message body is in JSON format: {"summaryFileUrl": "s3://my-bucket/summary.html"}
-//        // Parse it to extract the S3 URL (use a JSON library if needed)
-//        if (messageBody.contains("summaryFileUrl")) {
-//            return messageBody.split(":")[1].replace("}", "").replace("\"", "").trim();
-//        }
-//        return "Unknown";
-//    }
 
     public static void createHTMLFile(String summaryFilePath, String outputHtmlPath) {
         StringBuilder htmlContent = new StringBuilder();
@@ -175,7 +160,7 @@ public class LocalApp {
 
         try (FileWriter writer = new FileWriter(outputHtmlPath)) {
             writer.write(htmlContent.toString());
-            System.out.println("HTML file created: " + outputHtmlPath);
+            AWS.debugMsg("HTML file created: " + outputHtmlPath);
         } catch (Exception e) {
             System.err.println("Error writing HTML file: " + e.getMessage());
         }
@@ -188,6 +173,6 @@ public class LocalApp {
             QueueUrls.remove(queueUrl);
         }
         // Delete all the buckets - files inside the bucket
-        //aws.deleteBucket(aws.bucketName);
+//        aws.deleteBucket(bucketName);
     }
 }

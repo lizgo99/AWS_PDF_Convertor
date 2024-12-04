@@ -1,6 +1,6 @@
 package Manager;
 
-import AWS.AWS;
+import Manager.AWS;
 import software.amazon.awssdk.services.sqs.model.Message;
 
 import java.io.*;
