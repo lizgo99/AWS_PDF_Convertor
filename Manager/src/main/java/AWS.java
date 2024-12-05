@@ -1,5 +1,3 @@
-package Manager.src.main.java;
-
 //import software.amazon.awssdk.core.ResponseBytes;
 import software.amazon.awssdk.core.ResponseInputStream;
 import software.amazon.awssdk.regions.Region;

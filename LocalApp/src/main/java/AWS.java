@@ -1,5 +1,3 @@
-package LocalApp.src.main.java;
-
 import software.amazon.awssdk.core.ResponseInputStream;
 import software.amazon.awssdk.regions.Region;
 import software.amazon.awssdk.services.ec2.Ec2Client;

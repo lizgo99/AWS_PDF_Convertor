@@ -1,5 +1,3 @@
-package Worker.src.main.java;
-
 import org.apache.hc.client5.http.fluent.Request;
 import org.apache.pdfbox.pdmodel.PDDocument;
 import org.apache.pdfbox.rendering.PDFRenderer;

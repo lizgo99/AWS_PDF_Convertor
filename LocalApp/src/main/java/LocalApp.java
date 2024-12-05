@@ -1,5 +1,3 @@
-package LocalApp.src.main.java;
-
 //import software.amazon.awssdk.core.ResponseBytes;
 //import software.amazon.awssdk.core.exception.AbortedException;
 //import software.amazon.awssdk.core.pagination.sync.SdkIterable;

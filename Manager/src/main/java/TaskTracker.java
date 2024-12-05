@@ -1,5 +1,3 @@
-package Manager.src.main.java;
-
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicInteger;
 
