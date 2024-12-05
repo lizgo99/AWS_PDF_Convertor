@@ -27,18 +27,17 @@ public class LocalApp {
 
     public static void main(String[] args) throws Exception {
         //read from terminal >java -jar yourjar.jar inputFileName outputFileName n [terminate]
-//        if (args.length < 3) {
-//            System.err.println("Usage: java -jar LocalApp.jar inputFileName outputFileName n [terminate]");
-//            System.exit(1);
-//        }
-//
-//        String inputFileName = args[0];
-//        aws.debugMsg("inputFileName: " + inputFileName);
-//        String outputFileName = args[1];
-//        aws.debugMsg("outputFileName: " + outputFileName);
-//        int n = Integer.parseInt(args[2]);
-//        boolean terminate = args.length > 3 && args[3].equals("terminate");
-        int pdfsPerWorker = 10;
+        if (args.length < 5) {
+            AWS.errorMsg("Usage: java -jar LocalApp.jar inputFileName outputFileName n [terminate]");
+            System.exit(1);
+        }
+
+        String inputFileName = args[3];
+        AWS.debugMsg("inputFileName: %s", inputFileName);
+        String outputFileName = args[4];
+        AWS.debugMsg("outputFileName: %s", outputFileName);
+        int pdfsPerWorker = Integer.parseInt(args[5]);
+        boolean terminate = args.length > 6 && args[6].equals("terminate");
         File inputFile = new File(inputFileName);
 
         // Create manager if one doesn't exist
