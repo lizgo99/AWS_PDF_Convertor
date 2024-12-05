@@ -1,4 +1,4 @@
-package Worker;
+package Worker.src.main.java;
 
 import org.apache.hc.client5.http.fluent.Request;
 import org.apache.pdfbox.pdmodel.PDDocument;
@@ -23,10 +23,10 @@ public class Converter {
                 BufferedImage image = pdfRenderer.renderImageWithDPI(0, 300);
                 ImageIO.write(image, "PNG", new File(outputPath));
             } catch (IOException e) {
-                AWS.errorMsg("toImage: " + pdfUrl + " caused an exception during PDF operations: " + e.getMessage());
+                AWS.errorMsg("toImage: %s caused an exception during PDF operations: %s" , pdfUrl , e.getMessage());
             }
         } catch (IOException e) {
-            AWS.errorMsg("toImage: " + pdfUrl + " caused an exception during the HTTP request: " + e.getMessage());
+            AWS.errorMsg("toImage: %s caused an exception during the HTTP request: %s" , pdfUrl , e.getMessage());
         }
     }
 
@@ -38,10 +38,10 @@ public class Converter {
                 pdfStripper.setEndPage(1);
                 pdfStripper.writeText(document, new java.io.FileWriter(outputFilePath));
             } catch (Exception e) {
-                AWS.errorMsg("toHTML: " + pdfUrl + " caused an exception during PDF operations: " + e.getMessage());
+                AWS.errorMsg("toHTML: %s caused an exception during PDF operations: %s" , pdfUrl , e.getMessage());
             }
         } catch (Exception e) {
-            AWS.errorMsg("toHTML: " + pdfUrl + " caused an exception during the HTTP request: " + e.getMessage());
+            AWS.errorMsg("toHTML: %s caused an exception during the HTTP request: %s" , pdfUrl , e.getMessage());
         }
     }
 
@@ -56,13 +56,13 @@ public class Converter {
                 try (java.io.FileWriter writer = new java.io.FileWriter(outputFile)) {
                     writer.write(text);
                 } catch (IOException e) {
-                    AWS.errorMsg("toText: " + pdfUrl + " caused an exception during writing to file: " + e.getMessage());
+                    AWS.errorMsg("toText: %s caused an exception during writing to file:" , e.getMessage());
                 }
             } catch (Exception e) {
-                AWS.errorMsg("toText: " + pdfUrl + " caused an exception during PDF operations: " + e.getMessage());
+                AWS.errorMsg("toText: %s caused an exception during PDF operations: %s" , pdfUrl , e.getMessage());
             }
         } catch (Exception e) {
-            AWS.errorMsg("toText: " + pdfUrl + " caused an exception during the HTTP request: " + e.getMessage());
+            AWS.errorMsg("toText: %s caused an exception during the HTTP request: %s" , pdfUrl , e.getMessage());
         }
     }
 

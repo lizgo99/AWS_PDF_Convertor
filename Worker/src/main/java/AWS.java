@@ -1,4 +1,4 @@
-package Worker;
+package Worker.src.main.java;
 
 import software.amazon.awssdk.regions.Region;
 import software.amazon.awssdk.services.ec2.Ec2Client;
@@ -42,7 +42,7 @@ public class AWS {
 
     ////////////////// S3 //////////////////
     public String uploadFileToS3(String bucketName, String keyPath, File file){
-        debugMsg("Start upload: %s, to S3\n", file.getName());
+        debugMsg("Start upload: %s, to S3", file.getName());
         PutObjectRequest req = PutObjectRequest.builder()
                 .bucket(bucketName)
                 .key(keyPath)
@@ -67,7 +67,7 @@ public class AWS {
             GetQueueUrlResponse getQueueResponse = sqs.getQueueUrl(getQueueRequest);
             return getQueueResponse.queueUrl();
         } catch (SqsException e) {
-            errorMsg("Error connecting to queue: " + e.awsErrorDetails().errorMessage());
+            errorMsg("Error connecting to queue: %s" , e.awsErrorDetails().errorMessage());
             throw e;
         }
     }
@@ -88,9 +88,9 @@ public class AWS {
                     .build();
 
             SendMessageResponse sendResponse = sqs.sendMessage(sendMsgRequest);
-            debugMsg("Message sent. MessageId: " + sendResponse.messageId());
+            debugMsg("Message sent. MessageId: %s" , sendResponse.messageId());
         } catch (SqsException e) {
-            errorMsg("Error sending message: " + e.awsErrorDetails().errorMessage());
+            errorMsg("Error sending message: %s" , e.awsErrorDetails().errorMessage());
             throw e;
         }
     }
@@ -109,10 +109,10 @@ public class AWS {
             }
 
             Message message = receiveResponse.messages().get(0);
-            debugMsg("Message received. MessageId: " + message.messageId());
+            debugMsg("Message received. MessageId: %s" , message.messageId());
             return message;
         } catch (SqsException e) {
-            errorMsg("Error receiving message: " + e.awsErrorDetails().errorMessage());
+            errorMsg("Error receiving message: %s" , e.awsErrorDetails().errorMessage());
             throw e;
         }
     }
@@ -127,7 +127,7 @@ public class AWS {
             sqs.deleteMessage(deleteRequest);
             debugMsg("Message deleted");
         } catch (SqsException e) {
-            errorMsg("Error deleting message: " + e.awsErrorDetails().errorMessage());
+            errorMsg("Error deleting message: %s" , e.awsErrorDetails().errorMessage());
             throw e;
         }
     }
@@ -139,7 +139,7 @@ public class AWS {
                 .visibilityTimeout(timeout)
                 .build();
         sqs.changeMessageVisibility(request);
-        debugMsg("Visibility timeout changed for message " + receiptHandle);
+        debugMsg("Visibility timeout changed for message %s" , receiptHandle);
     }
 
     ////////////////// MESSAGE HANDLERS //////////////////

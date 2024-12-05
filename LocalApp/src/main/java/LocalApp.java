@@ -1,4 +1,4 @@
-package LocalApp;
+package LocalApp.src.main.java;
 
 //import software.amazon.awssdk.core.ResponseBytes;
 //import software.amazon.awssdk.core.exception.AbortedException;
@@ -56,6 +56,7 @@ public class LocalApp {
         QueueUrls.add(queueUrl);
 
         // Upload file location to the SQS
+        AWS.debugMsg("fileLocation: %s", fileLocation);
         aws.sendMessageToQueue(queueUrl, fileLocation + "\t" + pdfsPerWorker);
 
         RESULT_QUEUE_URL = aws.createSqsQueue("ManagerToLocalApp");
@@ -75,7 +76,7 @@ public class LocalApp {
 
                 createHTMLFile(summeryFile.getPath(), outputFile.getPath());
 
-                AWS.debugMsg("outputFile: " + outputFile.getPath());
+                AWS.debugMsg("outputFile: %s", outputFile.getPath());
             }
         }
 
@@ -104,11 +105,11 @@ public class LocalApp {
                 if (messages != null) {
                     for (Message message : messages) {
                         // Process the message
-                        AWS.debugMsg("Received message: " + message.body());
+                        AWS.debugMsg("Received message: %s", message.body());
 
                         // Assuming the message contains the summary file URL in JSON format
                         summaryFileUrl = message.body();
-                        AWS.debugMsg("Summary file is available at: " + summaryFileUrl);
+                        AWS.debugMsg("Summary file is available at: %s", summaryFileUrl);
 
                         // Mark the summary as received and exit loop
                         summaryReceived = true;
@@ -120,10 +121,10 @@ public class LocalApp {
                 }
             }
         } catch (Exception e) {
-            System.err.println("Error waiting for summary file: " + e.getMessage());
+            AWS.errorMsg("Error waiting for summary file: %s", e.getMessage());
         }
         long finishTime = System.currentTimeMillis();
-        AWS.debugMsg("Waiting time: " + (finishTime - startTime)/1000 + " seconds");
+        AWS.debugMsg("Waiting time: %d seconds", (finishTime - startTime)/1000);
         return summaryFileUrl;
     }
 
@@ -153,16 +154,16 @@ public class LocalApp {
                 htmlContent.append("</tr>\n");
             }
         } catch (Exception e) {
-            System.err.println("Error reading summary file: " + e.getMessage());
+            AWS.errorMsg("Error reading summary file: %s", e.getMessage());
         }
 
         htmlContent.append("</table>\n</body>\n</html>");
 
         try (FileWriter writer = new FileWriter(outputHtmlPath)) {
             writer.write(htmlContent.toString());
-            AWS.debugMsg("HTML file created: " + outputHtmlPath);
+            AWS.debugMsg("HTML file created: %s", outputHtmlPath);
         } catch (Exception e) {
-            System.err.println("Error writing HTML file: " + e.getMessage());
+            AWS.errorMsg("Error writing HTML file: %s", e.getMessage());
         }
     }
 

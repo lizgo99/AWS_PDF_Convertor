@@ -1,4 +1,4 @@
-package Manager;
+package Manager.src.main.java;
 
 import software.amazon.awssdk.services.sqs.model.Message;
 
@@ -95,7 +95,7 @@ public class Manager {
             }
             AWS.debugMsg("Manager: All threads terminated successfully");
         } catch (InterruptedException e) {
-            AWS.debugMsg("Manager: Thread termination interrupted: " + e.getMessage());
+            AWS.debugMsg("Manager: Thread termination interrupted: %s", e.getMessage());
             messageProcessorService.shutdownNow();
             workerManagerService.shutdownNow();
             Thread.currentThread().interrupt();
@@ -108,19 +108,19 @@ public class Manager {
         try {
             List<Message> messages = aws.pollMessages(localAppToManagerQueueUrl);
             if (messages != null && !messages.isEmpty()) {
-                AWS.debugMsg("Manager: Received " + messages.size() + " messages from LocalApp");
+                AWS.debugMsg("Manager: Received %d messages from LocalApp", messages.size());
                 for (Message message : messages) {
-                    AWS.debugMsg("Manager: Submitting message for processing: " + message.body());
+                    AWS.debugMsg("Manager: Submitting message for processing: %s", message.body());
                     try {
                         processLocalAppMessage(message);
                     } catch (Exception e) {
-                        AWS.errorMsg("Manager: Error submitting message for processing: " + e.getMessage());
+                        AWS.errorMsg("Manager: Error submitting message for processing: %s", e.getMessage());
                         e.printStackTrace();
                     }
                 }
             }
         } catch (Exception e) {
-            AWS.errorMsg("Manager: Error in receiveAndParseMsgFromLocalApp: " + e.getMessage());
+            AWS.errorMsg("Manager: Error in receiveAndParseMsgFromLocalApp: %s", e.getMessage());
             e.printStackTrace();
         }
     }
@@ -131,10 +131,10 @@ public class Manager {
             return;
         }
 
-        AWS.debugMsg("Manager: Starting to process LocalApp message: " + message.body());
+        AWS.debugMsg("Manager: Starting to process LocalApp message: %s", message.body());
         try {
             String[] messageBody = message.body().split("\t");
-            AWS.debugMsg("Manager: Message parts length: " + messageBody.length);
+            AWS.debugMsg("Manager: Message parts length: %d", messageBody.length);
 
             if (messageBody.length == 2) {
                 if (messageBody[0].equals("terminate")) {
@@ -146,37 +146,41 @@ public class Manager {
                 }
                 aws.changeVisibilityTimeout(localAppToManagerQueueUrl, message.receiptHandle(), 120);
                 String inputS3FileUrl = messageBody[0];
-                bucketName = inputS3FileUrl.substring(inputS3FileUrl.indexOf("S3://") + 5, inputS3FileUrl.lastIndexOf('/'));
+                // Example
+                // fileLocation:
+                // s3://local-743d8f8944c547fcb279d86cd2aa330c/inputs/input-sample-2.txt
+                // fileName = inputs/input-sample-2.txt
+                // bucketName = local-743d8f8944c547fcb279d86cd2aa330c
                 String fileName = inputS3FileUrl.substring(inputS3FileUrl.lastIndexOf('/') + 1);
+                bucketName = inputS3FileUrl.substring(5, inputS3FileUrl.indexOf('/', 5));
                 String keyPath = "inputs/" + fileName;
                 numOfPdfsPerWorker = Integer.parseInt(messageBody[1]);
-                AWS.debugMsg("Manager: Processing input file: " + fileName + " with " + numOfPdfsPerWorker
-                        + " PDFs per worker");
+                AWS.debugMsg("Manager: Processing input file: %s with %d PDFs per worker", fileName, numOfPdfsPerWorker);
+                AWS.debugMsg("Manager: Using bucket: %s, keyPath: %s", bucketName, keyPath);
 
                 int taskCount = 0;
                 try (BufferedReader reader = aws.downloadFileFromS3(bucketName, keyPath)) {
                     String line;
                     while ((line = reader.readLine()) != null) {
-                        AWS.debugMsg("Manager: Sending task to workers queue: " + line);
+                        AWS.debugMsg("Manager: Sending task to workers queue: %s" ,line);
                         aws.sendMessageToQueue(managerToWorkersQueueUrl, line + "\t" + bucketName);
                         taskCount++;
                     }
-                    AWS.debugMsg("Manager: Created " + taskCount + " tasks for file: " + fileName);
-                    TasksMap.put(inputS3FileUrl, new TaskTracker(inputS3FileUrl, taskCount));
+                    AWS.debugMsg("Manager: Created %d tasks for file: %s", taskCount, fileName);
+                    TasksMap.put(bucketName, new TaskTracker(inputS3FileUrl, taskCount));
                 }
                 aws.deleteMessageFromQueue(localAppToManagerQueueUrl, message.receiptHandle());
                 AWS.debugMsg("Manager: Successfully processed and deleted message from queue");
             } else {
-                AWS.errorMsg("Manager: Invalid message format received: " + message.body() + ". Expected 2 parts, got "
-                        + messageBody.length);
+                AWS.errorMsg("Manager: Invalid message format received: %s. Expected 2 parts, got %d", message.body(), messageBody.length);
                 aws.deleteMessageFromQueue(localAppToManagerQueueUrl, message.receiptHandle());
             }
         } catch (IOException e) {
-            AWS.errorMsg("Manager: Error processing message: " + e.getMessage());
+            AWS.errorMsg("Manager: Error processing message: %s", e.getMessage());
             e.printStackTrace();
             aws.deleteMessageFromQueue(localAppToManagerQueueUrl, message.receiptHandle());
         } catch (Exception e) {
-            AWS.errorMsg("Manager: Unexpected error processing message: " + e.getMessage());
+            AWS.errorMsg("Manager: Unexpected error processing message: %s", e.getMessage());
             e.printStackTrace();
             aws.deleteMessageFromQueue(localAppToManagerQueueUrl, message.receiptHandle());
         }
@@ -185,7 +189,7 @@ public class Manager {
     private static void processWorkerResponses() {
         List<Message> messages = aws.pollMessages(workersToManagerQueueUrl);
         if (messages != null && !messages.isEmpty()) {
-            AWS.debugMsg("Manager: Received " + messages.size() + " responses from workers");
+            AWS.debugMsg("Manager: Received %d responses from workers", messages.size());
             for (Message message : messages) {
                 messageProcessorService.submit(() -> processWorkerMessage(message));
             }
@@ -193,7 +197,7 @@ public class Manager {
     }
 
     private static void processWorkerMessage(Message message) {
-        AWS.debugMsg("Manager: Processing worker message: " + message.body());
+        AWS.debugMsg("Manager: Processing worker message: %s", message.body());
         try {
             String[] parts = message.body().split("\t");
             if (parts.length == 3) {
@@ -201,14 +205,13 @@ public class Manager {
                 String pdfUrl = parts[1];
                 String outputUrlOrErrorMsg = parts[2];
 
-                AWS.debugMsg("Manager: Worker completed operation: " + operation + " for PDF: " + pdfUrl);
+                AWS.debugMsg("Manager: Worker completed operation: %s for PDF: %s", operation, pdfUrl);
 
                 for (TaskTracker taskTracker : TasksMap.values()) {
                     if (taskTracker.addResult(pdfUrl, operation + ": " + pdfUrl + " " + outputUrlOrErrorMsg)) {
-                        AWS.debugMsg("Manager: Added result to task tracker for: " + pdfUrl);
+                        AWS.debugMsg("Manager: Added result to task tracker for: %s", pdfUrl);
                         if (taskTracker.isAllCompleted()) {
-                            AWS.debugMsg(
-                                    "Manager: All tasks completed for input file: " + taskTracker.getInputFileUrl());
+                            AWS.debugMsg("Manager: All tasks completed for input file: %s", taskTracker.getInputFileUrl());
                             messageProcessorService.submit(() -> createAndSendSummaryFile(taskTracker));
                         }
                         break;
@@ -218,12 +221,12 @@ public class Manager {
             aws.deleteMessageFromQueue(workersToManagerQueueUrl, message.receiptHandle());
             AWS.debugMsg("Manager: Successfully processed and deleted worker message from queue");
         } catch (Exception e) {
-            AWS.errorMsg("Manager: Error processing worker response: " + e.getMessage());
+            AWS.errorMsg("Manager: Error processing worker response: %s", e.getMessage());
         }
     }
 
     private static void createAndSendSummaryFile(TaskTracker taskTracker) {
-        AWS.debugMsg("Manager: Creating summary file for: " + taskTracker.getInputFileUrl());
+        AWS.debugMsg("Manager: Creating summary file for: %s", taskTracker.getInputFileUrl());
         try {
             File summaryFile = File.createTempFile("summary", ".txt");
             String summaryKey = "summaries/" + summaryFile.getName();
@@ -235,13 +238,13 @@ public class Manager {
             }
 
             String summaryFileUrl = aws.uploadFileToS3(bucketName, summaryKey, summaryFile);
-            AWS.debugMsg("Manager: Uploaded summary file to S3: " + summaryFileUrl);
+            AWS.debugMsg("Manager: Uploaded summary file to S3: %s", summaryFileUrl);
             aws.sendMessageToQueue(managerToLocalAppQueueUrl, summaryFileUrl);
             TasksMap.remove(taskTracker.getInputFileUrl());
             Files.delete(summaryFile.toPath());
             AWS.debugMsg("Manager: Summary file processed and cleaned up successfully");
         } catch (Exception e) {
-            AWS.errorMsg("Manager: Error creating/uploading summary file: " + e.getMessage());
+            AWS.errorMsg("Manager: Error creating/uploading summary file: %s", e.getMessage());
         }
     }
 
@@ -249,24 +252,22 @@ public class Manager {
         try {
             int totalPendingTasks = aws.getQueueMessageCount(managerToWorkersQueueUrl);
             if (totalPendingTasks > 0 && numOfPdfsPerWorker > 0) {
-                int requiredWorkers = Math.min((totalPendingTasks + numOfPdfsPerWorker - 1) / numOfPdfsPerWorker,
-                        MAX_WORKERS);
+                int requiredWorkers = Math.min((totalPendingTasks + numOfPdfsPerWorker - 1) / numOfPdfsPerWorker, MAX_WORKERS);
                 int currentWorkers = MAX_WORKERS - workerSemaphore.availablePermits();
                 int workersToStart = Math.max(0, requiredWorkers - currentWorkers);
 
-                AWS.debugMsg(String.format(
-                        "Manager: Worker status - Pending tasks: %d, Current workers: %d, Required workers: %d, Workers to start: %d",
-                        totalPendingTasks, currentWorkers, requiredWorkers, workersToStart));
+                AWS.debugMsg("Manager: Worker status - Pending tasks: %d, Current workers: %d, Required workers: %d, Workers to start: %d",
+                        totalPendingTasks, currentWorkers, requiredWorkers, workersToStart);
 
                 if (workersToStart > 0) {
-                    AWS.debugMsg("Manager: Starting " + workersToStart + " new worker instance(s)");
+                    AWS.debugMsg("Manager: Starting %d new worker instance(s)", workersToStart);
                     // Start workers directly instead of using executor service
                     if (workerSemaphore.tryAcquire(workersToStart)) {
                         try {
                             aws.startWorkerInstances(workersToStart);
-                            AWS.debugMsg("Manager: Successfully started " + workersToStart + " worker instances");
+                            AWS.debugMsg("Manager: Successfully started %d worker instances", workersToStart);
                         } catch (Exception e) {
-                            AWS.errorMsg("Manager: Failed to start worker instances: " + e.getMessage());
+                            AWS.errorMsg("Manager: Failed to start worker instances: %s", e.getMessage());
                             workerSemaphore.release(workersToStart);
                         }
                     }
@@ -275,9 +276,9 @@ public class Manager {
             Thread.sleep(1000);
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
-            AWS.errorMsg("Manager: Worker management thread interrupted: " + e.getMessage());
+            AWS.errorMsg("Manager: Worker management thread interrupted: %s", e.getMessage());
         } catch (Exception e) {
-            AWS.errorMsg("Manager: Error in worker management: " + e.getMessage());
+            AWS.errorMsg("Manager: Error in worker management: %s", e.getMessage());
         }
     }
 
@@ -291,7 +292,7 @@ public class Manager {
             aws.deleteQueue(workersToManagerQueueUrl);
             AWS.debugMsg("Manager: Worker queues deleted successfully");
         } catch (Exception e) {
-            AWS.errorMsg("Manager: Error deleting worker queues: " + e.getMessage());
+            AWS.errorMsg("Manager: Error deleting worker queues: %s", e.getMessage());
         }
     }
 
@@ -312,7 +313,7 @@ public class Manager {
             aws.deleteQueue(managerToLocalAppQueueUrl);
             AWS.debugMsg("Manager: Manager queues deleted successfully");
         } catch (Exception e) {
-            AWS.errorMsg("Manager: Error deleting manager queues: " + e.getMessage());
+            AWS.errorMsg("Manager: Error deleting manager queues: %s", e.getMessage());
         }
 
         aws.cleanup();
