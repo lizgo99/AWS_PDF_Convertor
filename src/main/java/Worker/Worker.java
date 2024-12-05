@@ -1,6 +1,5 @@
 package Worker;
 
-import AWS.AWS;
 import software.amazon.awssdk.services.sqs.model.Message;
 
 import java.io.File;
@@ -33,7 +32,7 @@ public class Worker {
                 break;
             }
             String[] parts = messageBody.split("\t");
-            if (parts.length != 2) {
+            if (parts.length != 3) {
                 AWS.errorMsg(messageBody + " - Invalid format");
                 break;
             }
@@ -41,6 +40,7 @@ public class Worker {
             AWS.debugMsg("PDF URL: " + pdfUrl);
             String operation = parts[0];
             String fileName = pdfUrl.substring(pdfUrl.lastIndexOf('/') + 1, pdfUrl.lastIndexOf('.'));
+            String bucketName = parts[2];
             try {
                 File outputFile = null;
                 String outputFileName = "";
@@ -70,9 +70,9 @@ public class Worker {
                 }
 
                 String s3Key = "outputs/" + outputFileName;
-                String outputUrl = aws.uploadFileToS3(s3Key, outputFile);
+                String outputUrl = aws.uploadFileToS3(bucketName, s3Key, outputFile);
                 AWS.debugMsg("Uploaded to S3: " + outputUrl);
-                outputUrl = aws.getPublicFileUrl(s3Key);
+                outputUrl = aws.getPublicFileUrl(bucketName, s3Key);
                 aws.sendMessageToQueue(WorkersToManagerQueueUrl, operation + "\t" + pdfUrl + "\t" + outputUrl);
                 AWS.debugMsg("Sent to Manager: " + pdfUrl + "\t" + outputUrl + "\t" + operation);
                 aws.deleteMessageFromQueue(ManagerToWorkersQueueUrl, receiptHandle);

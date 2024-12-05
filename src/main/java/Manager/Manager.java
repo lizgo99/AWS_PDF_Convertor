@@ -1,6 +1,5 @@
 package Manager;
 
-import Manager.AWS;
 import software.amazon.awssdk.services.sqs.model.Message;
 
 import java.io.*;
@@ -22,6 +21,8 @@ public class Manager {
     private static String workersToManagerQueueUrl;
     private static String managerToLocalAppQueueUrl;
     private static int numOfPdfsPerWorker = -1;
+    //TODO: save bucketName if necessary.
+    private static String bucketName;
 
     private static final ConcurrentHashMap<String, TaskTracker> TasksMap = new ConcurrentHashMap<>();
     private static final AtomicBoolean shouldTerminate = new AtomicBoolean(false);
@@ -145,6 +146,7 @@ public class Manager {
                 }
                 aws.changeVisibilityTimeout(localAppToManagerQueueUrl, message.receiptHandle(), 120);
                 String inputS3FileUrl = messageBody[0];
+                bucketName = inputS3FileUrl.substring(inputS3FileUrl.indexOf("S3://") + 5, inputS3FileUrl.lastIndexOf('/'));
                 String fileName = inputS3FileUrl.substring(inputS3FileUrl.lastIndexOf('/') + 1);
                 String keyPath = "inputs/" + fileName;
                 numOfPdfsPerWorker = Integer.parseInt(messageBody[1]);
@@ -152,11 +154,11 @@ public class Manager {
                         + " PDFs per worker");
 
                 int taskCount = 0;
-                try (BufferedReader reader = aws.downloadFileFromS3(keyPath)) {
+                try (BufferedReader reader = aws.downloadFileFromS3(bucketName, keyPath)) {
                     String line;
                     while ((line = reader.readLine()) != null) {
                         AWS.debugMsg("Manager: Sending task to workers queue: " + line);
-                        aws.sendMessageToQueue(managerToWorkersQueueUrl, line);
+                        aws.sendMessageToQueue(managerToWorkersQueueUrl, line + "\t" + bucketName);
                         taskCount++;
                     }
                     AWS.debugMsg("Manager: Created " + taskCount + " tasks for file: " + fileName);
@@ -232,9 +234,8 @@ public class Manager {
                 }
             }
 
-            String summaryFileUrl = aws.uploadFileToS3(summaryKey, summaryFile);
+            String summaryFileUrl = aws.uploadFileToS3(bucketName, summaryKey, summaryFile);
             AWS.debugMsg("Manager: Uploaded summary file to S3: " + summaryFileUrl);
-//            aws.makeFolderPublic("outputs");
             aws.sendMessageToQueue(managerToLocalAppQueueUrl, summaryFileUrl);
             TasksMap.remove(taskTracker.getInputFileUrl());
             Files.delete(summaryFile.toPath());
