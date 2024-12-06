@@ -72,8 +72,8 @@ public class Worker {
                 String outputUrl = aws.uploadFileToS3(bucketName, s3Key, outputFile);
                 AWS.debugMsg("Uploaded to S3: %s", outputUrl);
                 outputUrl = aws.getPublicFileUrl(bucketName, s3Key);
-                aws.sendMessageToQueue(WorkersToManagerQueueUrl, operation + "\t" + pdfUrl + "\t" + outputUrl);
-                AWS.debugMsg(String.format("Sent to Manager: %s\t%s\t%s" ,pdfUrl, outputUrl, operation));
+                aws.sendMessageToQueue(WorkersToManagerQueueUrl, operation + "\t" + pdfUrl + "\t" + outputUrl + "\t" + bucketName);
+                AWS.debugMsg(String.format("Sent to Manager: %s\t%s\t%s\t%s" ,pdfUrl, outputUrl, operation,bucketName));
                 aws.deleteMessageFromQueue(ManagerToWorkersQueueUrl, receiptHandle);
 
                 // Clean up the local file after upload

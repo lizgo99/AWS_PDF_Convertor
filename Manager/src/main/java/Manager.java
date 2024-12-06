@@ -21,7 +21,7 @@ public class Manager {
     private static String managerToLocalAppQueueUrl;
     private static int numOfPdfsPerWorker = -1;
     //TODO: save bucketName if necessary.
-    private static String bucketName;
+//    private static String bucketName;
 
     private static final ConcurrentHashMap<String, TaskTracker> TasksMap = new ConcurrentHashMap<>();
     private static final AtomicBoolean shouldTerminate = new AtomicBoolean(false);
@@ -44,6 +44,7 @@ public class Manager {
         // Start message processor threads
         messageProcessorService.submit(() -> {
             AWS.debugMsg("Manager: Starting LocalApp message listener thread");
+            // Stop listening to Local Apps when receiving a termination signal
             while (!shouldTerminate.get()) {
                 receiveAndParseMsgFromLocalApp();
             }
@@ -53,7 +54,7 @@ public class Manager {
         // Start worker manager in a separate executor
         workerManagerService.submit(() -> {
             AWS.debugMsg("Manager: Starting worker manager thread");
-            while (!shouldTerminate.get()) {
+            while (!shouldTerminate.get() || !TasksMap.isEmpty()) {
                 manageWorkers();
             }
             AWS.debugMsg("Manager: Worker manager thread terminated");
@@ -61,7 +62,7 @@ public class Manager {
 
         messageProcessorService.submit(() -> {
             AWS.debugMsg("Manager: Starting worker response processor thread");
-            while (!shouldTerminate.get()) {
+            while (!shouldTerminate.get() || !TasksMap.isEmpty()) {
                 processWorkerResponses();
             }
             AWS.debugMsg("Manager: Worker response processor thread terminated");
@@ -70,7 +71,7 @@ public class Manager {
         AWS.debugMsg("Manager: All processing threads started, waiting for termination");
 
         // Wait for termination signal
-        while (!shouldTerminate.get()) {
+        while (!shouldTerminate.get() || !TasksMap.isEmpty()) {
             try {
                 Thread.sleep(1000);
             } catch (InterruptedException e) {
@@ -135,27 +136,26 @@ public class Manager {
             String[] messageBody = message.body().split("\t");
             AWS.debugMsg("Manager: Message parts length: %d", messageBody.length);
 
+            if (messageBody.length == 1 && messageBody[0].equals("terminate")) {
+                AWS.debugMsg("Manager: Received terminate command");
+                shouldTerminate.set(true);
+                aws.deleteMessageFromQueue(localAppToManagerQueueUrl, message.receiptHandle());
+                cleanup();
+                return;
+            }
+
             if (messageBody.length == 2) {
-                if (messageBody[0].equals("terminate")) {
-                    AWS.debugMsg("Manager: Received terminate command");
-                    shouldTerminate.set(true);
-                    aws.deleteMessageFromQueue(localAppToManagerQueueUrl, message.receiptHandle());
-                    cleanup();
-                    return;
-                }
                 aws.changeVisibilityTimeout(localAppToManagerQueueUrl, message.receiptHandle(), 120);
                 String inputS3FileUrl = messageBody[0];
-                // Example
-                // fileLocation:
-                // s3://local-743d8f8944c547fcb279d86cd2aa330c/inputs/input-sample-2.txt
-                // fileName = inputs/input-sample-2.txt
-                // bucketName = local-743d8f8944c547fcb279d86cd2aa330c
                 String fileName = inputS3FileUrl.substring(inputS3FileUrl.lastIndexOf('/') + 1);
-                bucketName = inputS3FileUrl.substring(5, inputS3FileUrl.indexOf('/', 5));
+                String bucketName = inputS3FileUrl.substring(5, inputS3FileUrl.indexOf('/', 5));
                 String keyPath = "inputs/" + fileName;
                 numOfPdfsPerWorker = Integer.parseInt(messageBody[1]);
                 AWS.debugMsg("Manager: Processing input file: %s with %d PDFs per worker", fileName, numOfPdfsPerWorker);
                 AWS.debugMsg("Manager: Using bucket: %s, keyPath: %s", bucketName, keyPath);
+                TaskTracker taskTracker = new TaskTracker(inputS3FileUrl, 0);
+                TasksMap.putIfAbsent(bucketName, taskTracker);
+                AWS.debugMsg("Manager: Created task tracker for ID: %s:", bucketName);
 
                 int taskCount = 0;
                 try (BufferedReader reader = aws.downloadFileFromS3(bucketName, keyPath)) {
@@ -166,8 +166,9 @@ public class Manager {
                         taskCount++;
                     }
                     AWS.debugMsg("Manager: Created %d tasks for file: %s", taskCount, fileName);
-                    TasksMap.put(bucketName, new TaskTracker(inputS3FileUrl, taskCount));
                 }
+                int newTotal = taskTracker.changeTotalTasks(taskCount);
+                AWS.debugMsg("Manager: Changed total task number to %d in tracker %s", newTotal, bucketName);
                 aws.deleteMessageFromQueue(localAppToManagerQueueUrl, message.receiptHandle());
                 AWS.debugMsg("Manager: Successfully processed and deleted message from queue");
             } else {
@@ -199,23 +200,36 @@ public class Manager {
         AWS.debugMsg("Manager: Processing worker message: %s", message.body());
         try {
             String[] parts = message.body().split("\t");
-            if (parts.length == 3) {
+            if (parts.length == 4) {
                 String operation = parts[0];
                 String pdfUrl = parts[1];
                 String outputUrlOrErrorMsg = parts[2];
+                String bucket = parts[3];
 
                 AWS.debugMsg("Manager: Worker completed operation: %s for PDF: %s", operation, pdfUrl);
-
-                for (TaskTracker taskTracker : TasksMap.values()) {
+                TaskTracker taskTracker = TasksMap.get(bucket);
+                if (taskTracker == null){
+                    AWS.errorMsg("No task tracker for ID: %s", bucket);
+                } else {
                     if (taskTracker.addResult(pdfUrl, operation + ": " + pdfUrl + " " + outputUrlOrErrorMsg)) {
-                        AWS.debugMsg("Manager: Added result to task tracker for: %s", pdfUrl);
+                        AWS.debugMsg("Manager: Added result to task tracker %s for: %s", bucket, pdfUrl);
                         if (taskTracker.isAllCompleted()) {
                             AWS.debugMsg("Manager: All tasks completed for input file: %s", taskTracker.getInputFileUrl());
-                            messageProcessorService.submit(() -> createAndSendSummaryFile(taskTracker));
+                            messageProcessorService.submit(() -> createAndSendSummaryFile(taskTracker, bucket));
                         }
-                        break;
                     }
                 }
+
+//                for (TaskTracker taskTracker : TasksMap.values()) {
+//                    if (taskTracker.addResult(pdfUrl, operation + ": " + pdfUrl + " " + outputUrlOrErrorMsg)) {
+//                        AWS.debugMsg("Manager: Added result to task tracker for: %s", pdfUrl);
+//                        if (taskTracker.isAllCompleted()) {
+//                            AWS.debugMsg("Manager: All tasks completed for input file: %s", taskTracker.getInputFileUrl());
+//                            messageProcessorService.submit(() -> createAndSendSummaryFile(taskTracker));
+//                        }
+//                        break;
+//                    }
+//                }
             }
             aws.deleteMessageFromQueue(workersToManagerQueueUrl, message.receiptHandle());
             AWS.debugMsg("Manager: Successfully processed and deleted worker message from queue");
@@ -224,7 +238,7 @@ public class Manager {
         }
     }
 
-    private static void createAndSendSummaryFile(TaskTracker taskTracker) {
+    private static void createAndSendSummaryFile(TaskTracker taskTracker, String bucketName) {
         AWS.debugMsg("Manager: Creating summary file for: %s", taskTracker.getInputFileUrl());
         try {
             File summaryFile = File.createTempFile("summary", ".txt");
@@ -239,7 +253,8 @@ public class Manager {
             String summaryFileUrl = aws.uploadFileToS3(bucketName, summaryKey, summaryFile);
             AWS.debugMsg("Manager: Uploaded summary file to S3: %s", summaryFileUrl);
             aws.sendMessageToQueue(managerToLocalAppQueueUrl, summaryFileUrl);
-            TasksMap.remove(taskTracker.getInputFileUrl());
+            TasksMap.remove(bucketName);
+            AWS.debugMsg("Manager: Deleted task Tracker for ID: %s", bucketName);
             Files.delete(summaryFile.toPath());
             AWS.debugMsg("Manager: Summary file processed and cleaned up successfully");
         } catch (Exception e) {
@@ -319,3 +334,5 @@ public class Manager {
         System.exit(0);
     }
 }
+
+

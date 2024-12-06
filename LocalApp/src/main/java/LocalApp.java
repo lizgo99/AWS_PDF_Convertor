@@ -21,9 +21,11 @@ public class LocalApp {
 
     final static AWS aws = AWS.getInstance();
     private static String RESULT_QUEUE_URL = null;
-    public static String inputFileName = "input-sample-2.txt";
-    private static final String bucketName = AWS.generateRandomBucketName("local");
+//    public static String inputFileName = "input-sample-2.txt";
+    private static final String ID = generateRandomID("");
     public static HashSet<String> QueueUrls = new HashSet<>();
+    public static String localAppToManager = "LocalAppToManager";
+    public static String ManagerToLocalApp = "ManagerToLocalApp";
 
     public static void main(String[] args) throws Exception {
         //read from terminal >java -jar yourjar.jar inputFileName outputFileName n [terminate]
@@ -44,8 +46,8 @@ public class LocalApp {
         aws.startManagerIfNotActive();
 
         // Create a bucket and upload the file
-        aws.createBucketIfNotExists(bucketName);
-        String fileLocation =  aws.uploadFileToS3(bucketName, "inputs/" + inputFile.getName(), inputFile);
+        aws.createBucketIfNotExists(ID);
+        String fileLocation =  aws.uploadFileToS3(ID, "inputs/" + inputFile.getName(), inputFile);
 
         // Create a new SQS queue
         String queueName = "LocalAppToManager";
@@ -56,14 +58,13 @@ public class LocalApp {
         AWS.debugMsg("fileLocation: %s", fileLocation);
         aws.sendMessageToQueue(queueUrl, fileLocation + "\t" + pdfsPerWorker);
 
-        RESULT_QUEUE_URL = aws.createSqsQueue("ManagerToLocalApp");
+        RESULT_QUEUE_URL = aws.createSqsQueue(ManagerToLocalApp);
         QueueUrls.add(queueUrl);
 
         String summeryURL = waitForSummaryFile();
 
         if (summeryURL != null) {
-            File summeryFile = new File("summery.txt");
-            try (BufferedReader output = aws.downloadFileFromS3(bucketName, summeryURL); FileWriter writer = new FileWriter(summeryFile)) {
+            File summeryFile = new File("summery.txt");try (BufferedReader output = aws.downloadFileFromS3(ID, summeryURL); FileWriter writer = new FileWriter(summeryFile)) {
                 String line;
                 while ((line = output.readLine()) != null) {
                     writer.write(line + "\n");
@@ -77,9 +78,12 @@ public class LocalApp {
             }
         }
 
-        aws.makeFolderPublic(bucketName,"outputs");
+        aws.makeFolderPublic(ID,"outputs");
 
-        cleanup();
+//        cleanup();
+        if (terminate){
+            aws.sendMessageToQueue(localAppToManager, "terminate");
+        }
 
 
 
@@ -164,13 +168,33 @@ public class LocalApp {
         }
     }
 
-    public static void cleanup(){
+    public static void cleanup(boolean terminator){
         // Delete all the queues
-        for (String queueUrl : QueueUrls){
-            aws.deleteQueue(queueUrl);
-            QueueUrls.remove(queueUrl);
-        }
+//        if (terminator) {
+//            for (String queueUrl : QueueUrls) {
+//                aws.deleteQueue(queueUrl);
+//                QueueUrls.remove(queueUrl);
+//            }
+//        }
         // Delete all the buckets - files inside the bucket
 //        aws.deleteBucket(bucketName);
+    }
+
+    public static String generateRandomID(String prefix) {
+        String uniqueId = UUID.randomUUID().toString().replace("-", "");
+        String id;
+
+        if (prefix == null || prefix.isEmpty()) {
+            id = uniqueId;
+        } else {
+            id = prefix + "-" + uniqueId;
+        }
+
+        // Ensure the ID length does not exceed 63 characters
+        if (id.length() > 63) {
+            id = id.substring(0, 63);
+        }
+
+        return id.toLowerCase();
     }
 }

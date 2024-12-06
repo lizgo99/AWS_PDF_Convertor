@@ -73,17 +73,6 @@ public class AWS {
         }
     }
 
-    public static String generateRandomBucketName(String prefix) {
-        String uniqueId = UUID.randomUUID().toString().replace("-", "");
-        String bucketName = prefix + "-" + uniqueId;
-
-        // Ensure the bucket name length does not exceed 63 characters
-        if (bucketName.length() > 63) {
-            bucketName = bucketName.substring(0, 63);
-        }
-        return bucketName.toLowerCase();
-    }
-
     public String uploadFileToS3(String bucketName, String keyPath, File file){
         debugMsg("Start upload: %s, to S3", file.getName());
         PutObjectRequest req = PutObjectRequest.builder()
@@ -284,10 +273,7 @@ public class AWS {
         try {
             // get queue URL if name was provided instead of URL
             if (!queueUrl.startsWith("https://")) {
-                GetQueueUrlRequest getQueueRequest = GetQueueUrlRequest.builder()
-                        .queueName(queueUrl)
-                        .build();
-                queueUrl = sqs.getQueueUrl(getQueueRequest).queueUrl();
+                queueUrl = connectToQueueByName(queueUrl);
             }
 
             SendMessageRequest sendMsgRequest = SendMessageRequest.builder()
@@ -303,23 +289,42 @@ public class AWS {
         }
     }
 
-    public void deleteQueue(String queueUrl) {
+    public String connectToQueueByName(String queueName) {
         try {
-            DeleteQueueRequest deleteRequest = DeleteQueueRequest.builder()
-                    .queueUrl(queueUrl)
+            GetQueueUrlRequest getQueueRequest = GetQueueUrlRequest.builder()
+                    .queueName(queueName)
                     .build();
-
-            sqs.deleteQueue(deleteRequest);
-            debugMsg("Queue deleted successfully: %s", queueUrl);
-        } catch (Exception e) {
-            errorMsg("Error deleting the queue (%s): %s", queueUrl, e.getMessage());
-        } finally {
-            sqs.close();
+            GetQueueUrlResponse getQueueResponse = sqs.getQueueUrl(getQueueRequest);
+            return getQueueResponse.queueUrl();
+        } catch (SqsException e) {
+            errorMsg("Error connecting to queue: %s", e.awsErrorDetails().errorMessage());
+            throw e;
         }
     }
 
+//    public void deleteQueue(String queueUrl) {
+//        try {
+//            DeleteQueueRequest deleteRequest = DeleteQueueRequest.builder()
+//                    .queueUrl(queueUrl)
+//                    .build();
+//
+//            sqs.deleteQueue(deleteRequest);
+//            debugMsg("Queue deleted successfully: %s", queueUrl);
+//        } catch (Exception e) {
+//            errorMsg("Error deleting the queue (%s): %s", queueUrl, e.getMessage());
+//        } finally {
+//            sqs.close();
+//        }
+//    }
+
     public List<Message> pollMessages(String queueUrl) {
         try {
+
+            // get queue URL if name was provided instead of URL
+            if (!queueUrl.startsWith("https://")) {
+                queueUrl = connectToQueueByName(queueUrl);
+            }
+
             ReceiveMessageRequest receiveRequest = ReceiveMessageRequest.builder()
                     .queueUrl(queueUrl)
                     .maxNumberOfMessages(10) // what if there are more than 10 messages?
@@ -341,6 +346,11 @@ public class AWS {
 
     public void deleteMessageFromQueue(String queueUrl, String receiptHandle) {
         try {
+            // get queue URL if name was provided instead of URL
+            if (!queueUrl.startsWith("https://")) {
+                queueUrl = connectToQueueByName(queueUrl);
+            }
+
             DeleteMessageRequest deleteRequest = DeleteMessageRequest.builder()
                     .queueUrl(queueUrl)
                     .receiptHandle(receiptHandle)

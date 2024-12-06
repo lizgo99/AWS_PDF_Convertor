@@ -162,10 +162,7 @@ public class AWS {
         try {
             // get queue URL if name was provided instead of URL
             if (!queueUrl.startsWith("https://")) {
-                GetQueueUrlRequest getQueueRequest = GetQueueUrlRequest.builder()
-                        .queueName(queueUrl)
-                        .build();
-                queueUrl = sqs.getQueueUrl(getQueueRequest).queueUrl();
+                queueUrl = connectToQueueByName(queueUrl);
             }
 
             SendMessageRequest sendMsgRequest = SendMessageRequest.builder()
@@ -184,6 +181,11 @@ public class AWS {
 
     public void deleteQueue(String queueUrl) {
         try {
+            // get queue URL if name was provided instead of URL
+            if (!queueUrl.startsWith("https://")) {
+                queueUrl = connectToQueueByName(queueUrl);
+            }
+
             DeleteQueueRequest deleteRequest = DeleteQueueRequest.builder()
                     .queueUrl(queueUrl)
                     .build();
@@ -199,6 +201,10 @@ public class AWS {
 
     public List<Message> pollMessages(String queueUrl) {
         try {
+            // get queue URL if name was provided instead of URL
+            if (!queueUrl.startsWith("https://")) {
+                queueUrl = connectToQueueByName(queueUrl);
+            }
             ReceiveMessageRequest receiveRequest = ReceiveMessageRequest.builder()
                     .queueUrl(queueUrl)
                     .maxNumberOfMessages(10) // what if there are more than 10 messages?
@@ -220,6 +226,10 @@ public class AWS {
 
     public void deleteMessageFromQueue(String queueUrl, String receiptHandle) {
         try {
+            // get queue URL if name was provided instead of URL
+            if (!queueUrl.startsWith("https://")) {
+                queueUrl = connectToQueueByName(queueUrl);
+            }
             DeleteMessageRequest deleteRequest = DeleteMessageRequest.builder()
                     .queueUrl(queueUrl)
                     .receiptHandle(receiptHandle)
@@ -248,9 +258,17 @@ public class AWS {
 
     public int getQueueMessageCount(String queueUrl) {
         try {
-            GetQueueAttributesResponse response = sqs.getQueueAttributes(builder -> builder
+            // get queue URL if name was provided instead of URL
+            if (!queueUrl.startsWith("https://")) {
+                queueUrl = connectToQueueByName(queueUrl);
+            }
+
+            GetQueueAttributesRequest request = GetQueueAttributesRequest.builder()
                     .queueUrl(queueUrl)
-                    .attributeNames(QueueAttributeName.APPROXIMATE_NUMBER_OF_MESSAGES));
+                    .attributeNames(QueueAttributeName.APPROXIMATE_NUMBER_OF_MESSAGES)
+                    .build();
+            
+            GetQueueAttributesResponse response = sqs.getQueueAttributes(request);
             return Integer.parseInt(response.attributes().get(QueueAttributeName.APPROXIMATE_NUMBER_OF_MESSAGES));
         } catch (Exception e) {
             errorMsg("Error getting queue message count: %s", e.getMessage());
@@ -259,6 +277,10 @@ public class AWS {
     }
 
     public void changeVisibilityTimeout(String queueUrl, String receiptHandle, int timeout) {
+        // get queue URL if name was provided instead of URL
+        if (!queueUrl.startsWith("https://")) {
+            queueUrl = connectToQueueByName(queueUrl);
+        }
         ChangeMessageVisibilityRequest request = ChangeMessageVisibilityRequest.builder()
                 .queueUrl(queueUrl)
                 .receiptHandle(receiptHandle)

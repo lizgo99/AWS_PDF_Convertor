@@ -74,10 +74,7 @@ public class AWS {
         try {
             // get queue URL if name was provided instead of URL
             if (!queueUrl.startsWith("https://")) {
-                GetQueueUrlRequest getQueueRequest = GetQueueUrlRequest.builder()
-                        .queueName(queueUrl)
-                        .build();
-                queueUrl = sqs.getQueueUrl(getQueueRequest).queueUrl();
+                queueUrl = connectToQueueByName(queueUrl);
             }
 
             SendMessageRequest sendMsgRequest = SendMessageRequest.builder()
