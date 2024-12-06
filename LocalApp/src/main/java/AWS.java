@@ -32,8 +32,8 @@ public class AWS {
             "sudo yum update -y\n" +
             "sudo yum install -y aws-cli\n" +
             "sudo yum install -y java-11-amazon-corretto\n" +
-            "sudo wget https://workerjar123.s3.us-west-2.amazonaws.com/Manager.jar -O /home/Manager.jar\n" +
-//            "sudo wget https://bucketforjars.s3.us-west-2.amazonaws.com/Manager.jar -O /home/Manager.jar\n" +
+//            "sudo wget https://workerjar123.s3.us-west-2.amazonaws.com/Manager.jar -O /home/Manager.jar\n" +
+            "sudo wget https://bucketforjars.s3.us-west-2.amazonaws.com/Manager.jar -O /home/Manager.jar\n" +
             "java -cp /home/Manager.jar Manager > /home/manager_output.log 2>&1";
 
     private static boolean DEBUG = true;
@@ -375,4 +375,3 @@ public class AWS {
         System.out.println(redBold + "[ERROR] " + reset + formattedMsg);
     }
 }
-

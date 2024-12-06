@@ -6,13 +6,15 @@
         <sourceOutputDir name="target/generated-sources/annotations" />
         <sourceTestOutputDir name="target/generated-test-sources/test-annotations" />
         <outputRelativeToContentRoot value="true" />
-        <module name="PdfConvertor" />
+        <module name="Localapp" />
+        <module name="manager" />
+        <module name="worker" />
       </profile>
     </annotationProcessing>
   </component>
   <component name="JavacSettings">
     <option name="ADDITIONAL_OPTIONS_OVERRIDE">
-      <module name="PdfConvertor" options="--add-exports jdk.internal.le/jdk.internal.org.jline.terminal=ALL-UNNAMED" />
+      <module name="PdfConvertor" options="" />
     </option>
   </component>
 </project>

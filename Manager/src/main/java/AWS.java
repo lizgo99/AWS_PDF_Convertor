@@ -31,8 +31,8 @@ public class AWS {
             "sudo yum update -y\n" +
             "sudo yum install -y aws-cli\n" +
             "sudo yum install -y java-11-amazon-corretto\n" +
-            "sudo wget https://workerjar123.s3.us-west-2.amazonaws.com/Worker.jar -O /home/Worker.jar\n" +
-//            "sudo wget https://bucketforjars.s3.us-west-2.amazonaws.com/Worker.jar -O /home/Worker.jar\n" +
+//            "sudo wget https://workerjar123.s3.us-west-2.amazonaws.com/Worker.jar -O /home/Worker.jar\n" +
+            "sudo wget https://bucketforjars.s3.us-west-2.amazonaws.com/Worker.jar -O /home/Worker.jar\n" +
             "java -cp /home/Worker.jar Worker > /home/worker_output.log 2>&1";
 
     private static boolean DEBUG = true;

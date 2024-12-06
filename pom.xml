@@ -19,25 +19,34 @@
         <maven.compiler.source>8</maven.compiler.source>
         <maven.compiler.target>8</maven.compiler.target>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
-        <aws.sdk.version>2.18.16</aws.sdk.version>
     </properties>
 
     <dependencyManagement>
         <dependencies>
             <dependency>
-                <groupId>software.amazon.awssdk</groupId>
-                <artifactId>s3</artifactId>
-                <version>${aws.sdk.version}</version>
+                <groupId>org.slf4j</groupId>
+                <artifactId>slf4j-api</artifactId>
+                <version>2.0.4</version>
+            </dependency>
+            <dependency>
+                <groupId>org.slf4j</groupId>
+                <artifactId>slf4j-simple</artifactId>
+                <version>2.0.4</version>
             </dependency>
             <dependency>
                 <groupId>software.amazon.awssdk</groupId>
-                <artifactId>sqs</artifactId>
-                <version>${aws.sdk.version}</version>
+                <artifactId>s3</artifactId>
+                <version>2.18.16</version>
             </dependency>
             <dependency>
                 <groupId>software.amazon.awssdk</groupId>
                 <artifactId>ec2</artifactId>
-                <version>${aws.sdk.version}</version>
+                <version>2.18.16</version>
+            </dependency>
+            <dependency>
+                <groupId>software.amazon.awssdk</groupId>
+                <artifactId>sqs</artifactId>
+                <version>2.18.16</version>
             </dependency>
             <dependency>
                 <groupId>org.apache.pdfbox</groupId>
@@ -63,51 +72,33 @@
     </dependencyManagement>
 
     <build>
-        <plugins>
-            <!-- Maven Dependency Plugin -->
-            <plugin>
-                <groupId>org.apache.maven.plugins</groupId>
-                <artifactId>maven-dependency-plugin</artifactId>
-                <version>3.3.0</version>
-                <executions>
-                    <execution>
-                        <id>copy-module-artifacts</id>
-                        <phase>install</phase> <!-- Move to install phase -->
-                        <goals>
-                            <goal>copy</goal>
-                        </goals>
-                        <configuration>
-                            <outputDirectory>${project.build.directory}</outputDirectory>
-                            <artifactItems>
-                                <artifactItem>
-                                    <groupId>com.PdfConvertor</groupId>
-                                    <artifactId>Manager</artifactId>
-                                    <version>${project.version}</version>
-                                    <type>jar</type>
-                                    <destFileName>Manager.jar</destFileName>
-                                    <overWrite>true</overWrite>
-                                </artifactItem>
-                                <artifactItem>
-                                    <groupId>com.PdfConvertor</groupId>
-                                    <artifactId>Worker</artifactId>
-                                    <version>${project.version}</version>
-                                    <type>jar</type>
-                                    <destFileName>Worker.jar</destFileName>
-                                    <overWrite>true</overWrite>
-                                </artifactItem>
-                                <artifactItem>
-                                    <groupId>com.PdfConvertor</groupId>
-                                    <artifactId>LocalApp</artifactId>
-                                    <version>${project.version}</version>
-                                    <type>jar</type>
-                                    <destFileName>LocalApp.jar</destFileName>
-                                    <overWrite>true</overWrite>
-                                </artifactItem>
-                            </artifactItems>
-                        </configuration>
-                    </execution>
-                </executions>
-            </plugin>
-        </plugins>
+        <pluginManagement>
+            <plugins>
+                <plugin>
+                    <groupId>org.apache.maven.plugins</groupId>
+                    <artifactId>maven-assembly-plugin</artifactId>
+                    <version>3.3.0</version>
+                    <configuration>
+                        <descriptorRefs>
+                            <descriptorRef>jar-with-dependencies</descriptorRef>
+                        </descriptorRefs>
+                        <archive>
+                            <manifest>
+                                <addClasspath>true</addClasspath>
+                            </manifest>
+                        </archive>
+                    </configuration>
+                    <executions>
+                        <execution>
+                            <id>make-assembly</id>
+                            <phase>package</phase>
+                            <goals>
+                                <goal>single</goal>
+                            </goals>
+                        </execution>
+                    </executions>
+                </plugin>
+            </plugins>
+        </pluginManagement>
     </build>
 </project>

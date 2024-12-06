@@ -1,7 +1,5 @@
-
-
 import software.amazon.awssdk.regions.Region;
-import software.amazon.awssdk.services.ec2.Ec2Client;
+//import software.amazon.awssdk.services.ec2.Ec2Client;
 import software.amazon.awssdk.services.s3.S3Client;
 import software.amazon.awssdk.services.s3.model.*;
 import software.amazon.awssdk.services.sqs.SqsClient;
@@ -13,7 +11,7 @@ public class AWS {
     ////////////////// Fields //////////////////
 
     private final S3Client s3;
-    private final Ec2Client ec2;
+//    private final Ec2Client ec2;
     private final SqsClient sqs;
 
     private static final Region region1 = Region.US_WEST_2;
@@ -32,7 +30,7 @@ public class AWS {
 
     private AWS() {
         s3 = S3Client.builder().region(region1).build();
-        ec2 = Ec2Client.builder().region(region2).build();
+//        ec2 = Ec2Client.builder().region(region2).build();
         sqs = SqsClient.builder().region(region1).build();
     }
 

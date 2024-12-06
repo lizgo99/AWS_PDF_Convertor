@@ -31,7 +31,4 @@ public class TaskTracker {
     public ConcurrentHashMap<String, String> getResults() {
         return results;
     }
-
-
-
 }
