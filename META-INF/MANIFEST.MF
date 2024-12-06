@@ -1,5 +1,5 @@
 Manifest-Version: 1.0
 Created-By: Maven JAR Plugin 3.4.1
 Build-Jdk-Spec: 23
-Main-Class: LocalApp.src.main.java.LocalApp
+Main-Class: LocalApp
 

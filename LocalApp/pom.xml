@@ -51,7 +51,7 @@
                     <finalName>LocalApp</finalName>
                     <archive>
                         <manifest>
-                            <mainClass>LocalApp.src.main.java.LocalApp</mainClass>
+                            <mainClass>LocalApp</mainClass>
                         </manifest>
                     </archive>
                     <descriptorRefs>

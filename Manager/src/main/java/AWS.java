@@ -31,10 +31,9 @@ public class AWS {
             "sudo yum update -y\n" +
             "sudo yum install -y aws-cli\n" +
             "sudo yum install -y java-11-amazon-corretto\n" +
-            // "sudo wget https://workerjar123.s3.us-west-2.amazonaws.com/Worker.jar -O
-            // /home/Worker.jar\n" +
-            "sudo wget https://bucketforjars.s3.us-west-2.amazonaws.com/Worker.jar -O /home/Worker.jar\n" +
-            "java -cp /home/Worker.jar Worker.src.main.java.Worker > /home/worker_output.log 2>&1";
+            "sudo wget https://workerjar123.s3.us-west-2.amazonaws.com/Worker.jar -O /home/Worker.jar\n" +
+//            "sudo wget https://bucketforjars.s3.us-west-2.amazonaws.com/Worker.jar -O /home/Worker.jar\n" +
+            "java -cp /home/Worker.jar Worker > /home/worker_output.log 2>&1";
 
     private static boolean DEBUG = true;
 
@@ -55,7 +54,7 @@ public class AWS {
 
     ////////////////// S3 //////////////////
     public String uploadFileToS3(String bucketName, String keyPath, File file) {
-        debugMsg("Start upload: %s, to S3\n", file.getName());
+        debugMsg("Start upload: %s, to S3", file.getName());
         PutObjectRequest req = PutObjectRequest.builder()
                 .bucket(bucketName)
                 .key(keyPath)
@@ -123,7 +122,7 @@ public class AWS {
         try {
             ec2.createTags(tagRequest);
             for (String instanceId : instanceIds) {
-                debugMsg("Successfully started EC2 instance %s with tag %s\n",
+                debugMsg("Successfully started EC2 instance %s with tag %s",
                         instanceId, tagName);
             }
             return instanceIds.get(0); // Return first instance ID for backward compatibility

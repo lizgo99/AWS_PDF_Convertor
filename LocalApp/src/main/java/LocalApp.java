@@ -27,17 +27,17 @@ public class LocalApp {
 
     public static void main(String[] args) throws Exception {
         //read from terminal >java -jar yourjar.jar inputFileName outputFileName n [terminate]
-        if (args.length < 5) {
+        if (args.length < 3) {
             AWS.errorMsg("Usage: java -jar LocalApp.jar inputFileName outputFileName n [terminate]");
             System.exit(1);
         }
 
-        String inputFileName = args[3];
+        String inputFileName = args[0];
         AWS.debugMsg("inputFileName: %s", inputFileName);
-        String outputFileName = args[4];
+        String outputFileName = args[1];
         AWS.debugMsg("outputFileName: %s", outputFileName);
-        int pdfsPerWorker = Integer.parseInt(args[5]);
-        boolean terminate = args.length > 6 && args[6].equals("terminate");
+        int pdfsPerWorker = Integer.parseInt(args[2]);
+        boolean terminate = args.length > 3 && args[3].equals("terminate");
         File inputFile = new File(inputFileName);
 
         // Create manager if one doesn't exist
@@ -69,7 +69,7 @@ public class LocalApp {
                     writer.write(line + "\n");
                 }
                 writer.flush();
-                File outputFile = new File("output1.html");
+                File outputFile = new File(outputFileName);
 
                 createHTMLFile(summeryFile.getPath(), outputFile.getPath());
 

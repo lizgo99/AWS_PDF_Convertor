@@ -73,7 +73,7 @@
                     <finalName>Worker</finalName>
                     <archive>
                         <manifest>
-                            <mainClass>Worker.src.main.java.Worker</mainClass>
+                            <mainClass>Worker</mainClass>
                         </manifest>
                     </archive>
                     <descriptorRefs>

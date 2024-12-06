@@ -43,7 +43,7 @@
                     <finalName>Manager</finalName>
                     <archive>
                         <manifest>
-                            <mainClass>Manager.src.main.java.Manager</mainClass>
+                            <mainClass>Manager</mainClass>
                         </manifest>
                     </archive>
                     <descriptorRefs>
