@@ -1,16 +1,14 @@
+import jdk.internal.net.http.common.Pair;
 import software.amazon.awssdk.regions.Region;
 import software.amazon.awssdk.services.sqs.model.Message;
 
 import java.io.*;
 import java.nio.file.Files;
 import java.util.List;
-import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
-import java.util.concurrent.Semaphore;
-import java.util.concurrent.TimeUnit;
+import java.util.concurrent.*;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.LongAdder;
 
 public class Manager {
 
@@ -28,6 +26,7 @@ public class Manager {
     private static final AtomicBoolean shouldTerminate = new AtomicBoolean(false);
     private static final ExecutorService localAppMessageProcessorService = Executors.newFixedThreadPool(3);
     private static final ExecutorService workersMessageProcessorService = Executors.newFixedThreadPool(3);
+//    private static final ExecutorService messageProcessorService = Executors.newFixedThreadPool(3);
     private static final ExecutorService workerManagerService = Executors.newFixedThreadPool(1);
     private static final Semaphore workerSemaphore = new Semaphore(MAX_WORKERS);
 
@@ -47,7 +46,7 @@ public class Manager {
         localAppMessageProcessorService.submit(() -> {
             AWS.debugMsg("Manager: Starting LocalApp message listener thread");
             // Stop listening to Local Apps when receiving a termination signal
-            while (!shouldTerminate.get()) {
+            while (!shouldTerminate.get() || !TasksMap.isEmpty()) {
                 receiveAndParseMsgFromLocalApp();
             }
             AWS.debugMsg("Manager: LocalApp message listener thread terminated");
@@ -146,19 +145,19 @@ public class Manager {
                 TasksMap.putIfAbsent(bucketName, taskTracker);
                 AWS.debugMsg("Manager: Created task tracker for ID: %s:", bucketName);
 
-                // int taskCount = 0;
-                AtomicInteger taskCount = new AtomicInteger(0);
+                 int taskCount = 0;
+//                AtomicInteger taskCount = new AtomicInteger(0);
                 try (BufferedReader reader = aws.downloadFileFromS3(bucketName, keyPath)) {
                     String line;
                     while ((line = reader.readLine()) != null) {
                         AWS.debugMsg("Manager: Sending task to workers queue: %s", line);
                         aws.sendMessageToQueue(managerToWorkersQueueUrl, line + "\t" + bucketName);
-                        // taskCount++;
-                        taskCount.incrementAndGet();
+                         taskCount++;
+//                        taskCount.incrementAndGet();
                     }
                     AWS.debugMsg("Manager: Created %d tasks for file: %s", taskCount, fileName);
                 }
-                int newTotal = taskTracker.changeTotalTasks(taskCount.get());
+                int newTotal = taskTracker.changeTotalTasks(taskCount);
                 AWS.debugMsg("Manager: Changed total task number to %d in tracker %s", newTotal, bucketName);
                 aws.deleteMessageFromQueue(localAppToManagerQueueUrl, message.receiptHandle());
                 AWS.debugMsg("Manager: Successfully processed and deleted message from queue");
@@ -200,10 +199,11 @@ public class Manager {
 
                 AWS.debugMsg("Manager: Worker completed operation: %s for PDF: %s", operation, pdfUrl);
                 TaskTracker taskTracker = TasksMap.get(bucket);
+                AWS.debugMsg("is taskTracker null: %b", taskTracker == null);
                 if (taskTracker == null) {
                     AWS.errorMsg("No task tracker for ID: %s", bucket);
                 } else {
-                    taskTracker.addResult(pdfUrl, operation + ": " + pdfUrl + " " + outputUrlOrErrorMsg);
+                    taskTracker.addResultToList(operation + ": " + pdfUrl + " " + outputUrlOrErrorMsg);
                     AWS.debugMsg("Manager: Added result to task tracker %s for: %s", bucket, pdfUrl);
                     if (taskTracker.isAllCompleted()) {
                         AWS.debugMsg("Manager: All tasks completed for input file: %s", taskTracker.getInputFileUrl());
@@ -225,9 +225,16 @@ public class Manager {
             String summaryKey = "summaries/" + summaryFile.getName();
 
             try (PrintWriter writer = new PrintWriter(summaryFile)) {
-                for (String result : taskTracker.getResults().values()) {
+                ConcurrentLinkedQueue<String> resultsList = taskTracker.getResultsList();
+                for (String result : resultsList) {
                     writer.println(result);
                 }
+//                ConcurrentHashMap<String, LongAdder> results = taskTracker.getResults();
+//                for (String result : results.keySet()) {
+//                    for (int i = 0; i < results.get(result).intValue(); i++){
+//                        writer.println(result);
+//                    }
+//                }
             }
 
             String summaryFileUrl = aws.uploadFileToS3(bucketName, summaryKey, summaryFile);
@@ -257,7 +264,6 @@ public class Manager {
 
                 if (workersToStart > 0) {
                     AWS.debugMsg("Manager: Starting %d new worker instance(s)", workersToStart);
-                    // Start workers directly instead of using executor service
                     if (workerSemaphore.tryAcquire(workersToStart)) {
                         try {
                             aws.startWorkerInstances(workersToStart);
