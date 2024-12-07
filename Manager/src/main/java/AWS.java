@@ -193,9 +193,7 @@ public class AWS {
             sqs.deleteQueue(deleteRequest);
             debugMsg("Queue deleted successfully: %s" , queueUrl);
         } catch (Exception e) {
-            errorMsg("Error deleting the queue (%s): %s" , queueUrl , e.getMessage());
-        } finally {
-            sqs.close();
+            errorMsg("Error deleting the queue (%s): %s", queueUrl, e.getMessage());
         }
     }
 
@@ -291,7 +289,7 @@ public class AWS {
     }
 
     ////////////////// TERMINATION //////////////////
-    public void terminateAllWorkerInstances() {
+    public void terminateAllRunningWorkerInstances() {
         try {
             DescribeInstancesRequest request = DescribeInstancesRequest.builder().build();
             DescribeInstancesResponse response = ec2.describeInstances(request);
@@ -326,7 +324,7 @@ public class AWS {
 
     public void terminateManagerInstance() {
         try {
-            terminateAllWorkerInstances();
+            terminateAllRunningWorkerInstances();
             Thread.sleep(5000);
 
             DescribeInstancesRequest request = DescribeInstancesRequest.builder().build();
@@ -351,28 +349,53 @@ public class AWS {
     public void cleanup() {
         try {
             // First terminate all instances
-            terminateAllWorkerInstances();
+            terminateAllRunningWorkerInstances();
+
+            // Wait briefly for termination to complete
+            try {
+                Thread.sleep(5000);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+            }
+
+            // Then terminate the manager
             terminateManagerInstance();
 
-            // Keep clients open until the very end
+            // Wait for termination to complete
             try {
-                Thread.sleep(5000); // Wait for instance termination to complete
+                Thread.sleep(50000);
             } catch (InterruptedException e) {
                 Thread.currentThread().interrupt();
             }
 
             // Finally close the clients
-            try {
-                ec2.close();
-                s3.close();
-                sqs.close();
-            } catch (Exception e) {
-                errorMsg("Error closing AWS clients: %s", e.getMessage());
-            }
+            closeClients();
+            
         } catch (Exception e) {
             errorMsg("Error during cleanup: %s", e.getMessage());
         }
     }
+
+    private void closeClients() {
+        try {
+            if (ec2 != null) {
+                ec2.close();
+                debugMsg("EC2 client closed successfully");
+            }
+            if (s3 != null) {
+                s3.close();
+                debugMsg("S3 client closed successfully");
+            }
+            if (sqs != null) {
+                sqs.close();
+                debugMsg("SQS client closed successfully");
+            }
+        } catch (Exception e) {
+            errorMsg("Error closing AWS clients: %s", e.getMessage());
+        }
+    }
+    
+    
 
     ////////////////// MESSAGE HANDLERS //////////////////
     public static void changeDebugMode() {

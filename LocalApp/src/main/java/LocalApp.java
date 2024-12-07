@@ -1,34 +1,19 @@
-//import software.amazon.awssdk.core.ResponseBytes;
-//import software.amazon.awssdk.core.exception.AbortedException;
-//import software.amazon.awssdk.core.pagination.sync.SdkIterable;
-//import software.amazon.awssdk.regions.Region;
-//import software.amazon.awssdk.services.ec2.Ec2Client;
-//import software.amazon.awssdk.services.ec2.model.Tag;
-//import software.amazon.awssdk.services.ec2.model.*;
-//import software.amazon.awssdk.services.s3.S3Client;
-//import software.amazon.awssdk.services.s3.model.*;
-//import software.amazon.awssdk.services.s3.paginators.ListObjectsV2Iterable;
-//import software.amazon.awssdk.services.sqs.SqsClient;
 import software.amazon.awssdk.services.sqs.model.*;
-
 import java.io.*;
-//import java.nio.charset.StandardCharsets;
 import java.util.*;
-//import java.util.concurrent.atomic.AtomicInteger;
-
 
 public class LocalApp {
-
     final static AWS aws = AWS.getInstance();
-    private static String RESULT_QUEUE_URL = null;
-//    public static String inputFileName = "input-sample-2.txt";
+    // public static String inputFileName = "input-sample-2.txt";
     private static final String ID = generateRandomID("");
     public static HashSet<String> QueueUrls = new HashSet<>();
+    private static String ManagerToLocalAppQueueUrl = null;
     public static String localAppToManager = "LocalAppToManager";
     public static String ManagerToLocalApp = "ManagerToLocalApp";
 
     public static void main(String[] args) throws Exception {
-        //read from terminal >java -jar yourjar.jar inputFileName outputFileName n [terminate]
+        // read from terminal >java -jar yourjar.jar inputFileName outputFileName n
+        // [terminate]
         if (args.length < 3) {
             AWS.errorMsg("Usage: java -jar LocalApp.jar inputFileName outputFileName n [terminate]");
             System.exit(1);
@@ -47,25 +32,26 @@ public class LocalApp {
 
         // Create a bucket and upload the file
         aws.createBucketIfNotExists(ID);
-        String fileLocation =  aws.uploadFileToS3(ID, "inputs/" + inputFile.getName(), inputFile);
+        String fileLocation = aws.uploadFileToS3(ID, "inputs/" + inputFile.getName(), inputFile);
 
         // Create a new SQS queue
         String queueName = "LocalAppToManager";
         String queueUrl = aws.createSqsQueue(queueName);
-        QueueUrls.add(queueUrl);
+        // QueueUrls.add(queueUrl);
 
         // Upload file location to the SQS
         AWS.debugMsg("fileLocation: %s", fileLocation);
         aws.sendMessageToQueue(queueUrl, fileLocation + "\t" + pdfsPerWorker);
 
-        RESULT_QUEUE_URL = aws.createSqsQueue(ManagerToLocalApp);
-        QueueUrls.add(queueUrl);
+        ManagerToLocalAppQueueUrl = aws.createSqsQueue(ManagerToLocalApp);
+        // QueueUrls.add(ManagerToLocalAppQueueUrl);
 
         String summeryURL = waitForSummaryFile();
 
         if (summeryURL != null) {
             File summeryFile = new File("summery.txt");
-            try (BufferedReader output = aws.downloadFileFromS3(ID, summeryURL); FileWriter writer = new FileWriter(summeryFile)) {
+            try (BufferedReader output = aws.downloadFileFromS3(ID, summeryURL);
+                    FileWriter writer = new FileWriter(summeryFile)) {
                 String line;
                 while ((line = output.readLine()) != null) {
                     writer.write(line + "\n");
@@ -74,17 +60,27 @@ public class LocalApp {
                 File outputFile = new File(outputFileName);
 
                 createHTMLFile(summeryFile.getPath(), outputFile.getPath());
-
                 AWS.debugMsg("outputFile: %s", outputFile.getPath());
             }
         }
 
-        aws.makeFolderPublic(ID,"outputs");
+        aws.makeFolderPublic(ID, "outputs");
 
-//        cleanup();
-        if (terminate){
+        // Clean up resources
+        // cleanup();
+
+        // Handle termination
+        if (terminate) {
+            AWS.debugMsg("LocalApp: Sending termination message to Manager");
             aws.sendMessageToQueue(localAppToManager, "terminate");
+            // Wait briefly to ensure the termination message is sent
+            try {
+                Thread.sleep(2000);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+            }
         }
+        AWS.debugMsg("LocalApp: Exiting");
     }
 
     public static String waitForSummaryFile() {
@@ -98,8 +94,7 @@ public class LocalApp {
 
             while (!summaryReceived) {
                 // Poll the ResultQueue for a message
-
-                List<Message> messages = aws.pollMessages(RESULT_QUEUE_URL);
+                List<Message> messages = aws.pollMessages(ManagerToLocalAppQueueUrl);
                 if (messages != null) {
                     for (Message message : messages) {
                         // Process the message
@@ -108,12 +103,15 @@ public class LocalApp {
                         // Assuming the message contains the summary file URL in JSON format
                         summaryFileUrl = message.body();
                         AWS.debugMsg("Summary file is available at: %s", summaryFileUrl);
+                        String bucketName = summaryFileUrl.substring(5, summaryFileUrl.indexOf('/', 5));
+                        aws.sendMessageToQueue("LocalAppToManager", bucketName);
+                        AWS.debugMsg("Sent message to Manager with bucket name: %s", bucketName);
 
                         // Mark the summary as received and exit loop
                         summaryReceived = true;
 
                         // Delete the processed message from the queue
-                        aws.deleteMessageFromQueue(RESULT_QUEUE_URL, message.receiptHandle());
+                        aws.deleteMessageFromQueue(ManagerToLocalAppQueueUrl, message.receiptHandle());
                         break; // Exit the loop after processing a valid message
                     }
                 }
@@ -122,7 +120,7 @@ public class LocalApp {
             AWS.errorMsg("Error waiting for summary file: %s", e.getMessage());
         }
         long finishTime = System.currentTimeMillis();
-        AWS.debugMsg("Waiting time: %d seconds", (finishTime - startTime)/1000);
+        AWS.debugMsg("Waiting time: %d seconds", (finishTime - startTime) / 1000);
         return summaryFileUrl;
     }
 
@@ -136,14 +134,16 @@ public class LocalApp {
             String line;
             while ((line = reader.readLine()) != null) {
                 String[] parts = line.split(" ", 3); // Split into operation, input, and result
-                if (parts.length < 3) continue; // Skip malformed lines
+                if (parts.length < 3)
+                    continue; // Skip malformed lines
                 String operation = parts[0];
                 String inputUrl = parts[1];
                 String resultUrlOrErrMsg = parts[2].replace(" ", "");
 
                 htmlContent.append("<tr>");
                 htmlContent.append("<td>").append(operation).append("</td>");
-                htmlContent.append("<td><a href=\"").append(inputUrl).append("\">").append(inputUrl).append("</a></td>");
+                htmlContent.append("<td><a href=\"").append(inputUrl).append("\">").append(inputUrl)
+                        .append("</a></td>");
                 if (resultUrlOrErrMsg.startsWith("https://")) {
                     htmlContent.append("<td><a href=\"").append(resultUrlOrErrMsg).append("\">Output File</a></td>");
                 } else {
@@ -165,16 +165,16 @@ public class LocalApp {
         }
     }
 
-    public static void cleanup(boolean terminator){
+    public static void cleanup(boolean terminator) {
         // Delete all the queues
-//        if (terminator) {
-//            for (String queueUrl : QueueUrls) {
-//                aws.deleteQueue(queueUrl);
-//                QueueUrls.remove(queueUrl);
-//            }
-//        }
+        // if (terminator) {
+        // for (String queueUrl : QueueUrls) {
+        // aws.deleteQueue(queueUrl);
+        // QueueUrls.remove(queueUrl);
+        // }
+        // }
         // Delete all the buckets - files inside the bucket
-//        aws.deleteBucket(bucketName);
+        // aws.deleteBucket(bucketName);
     }
 
     public static String generateRandomID(String prefix) {
