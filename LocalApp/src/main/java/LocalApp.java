@@ -64,7 +64,8 @@ public class LocalApp {
         String summeryURL = waitForSummaryFile();
 
         if (summeryURL != null) {
-            File summeryFile = new File("summery.txt");try (BufferedReader output = aws.downloadFileFromS3(ID, summeryURL); FileWriter writer = new FileWriter(summeryFile)) {
+            File summeryFile = new File("summery.txt");
+            try (BufferedReader output = aws.downloadFileFromS3(ID, summeryURL); FileWriter writer = new FileWriter(summeryFile)) {
                 String line;
                 while ((line = output.readLine()) != null) {
                     writer.write(line + "\n");
@@ -84,10 +85,6 @@ public class LocalApp {
         if (terminate){
             aws.sendMessageToQueue(localAppToManager, "terminate");
         }
-
-
-
-
     }
 
     public static String waitForSummaryFile() {
@@ -142,15 +139,15 @@ public class LocalApp {
                 if (parts.length < 3) continue; // Skip malformed lines
                 String operation = parts[0];
                 String inputUrl = parts[1];
-                String result = parts[2].replace(" ", "");
+                String resultUrlOrErrMsg = parts[2].replace(" ", "");
 
                 htmlContent.append("<tr>");
                 htmlContent.append("<td>").append(operation).append("</td>");
                 htmlContent.append("<td><a href=\"").append(inputUrl).append("\">").append(inputUrl).append("</a></td>");
-                if (result.startsWith("Operation failed")) {
-                    htmlContent.append("<td>").append(result).append("</td>");
+                if (resultUrlOrErrMsg.startsWith("https://")) {
+                    htmlContent.append("<td><a href=\"").append(resultUrlOrErrMsg).append("\">Output File</a></td>");
                 } else {
-                    htmlContent.append("<td><a href=\"").append(result).append("\">Output File</a></td>");
+                    htmlContent.append("<td>").append(resultUrlOrErrMsg).append("</td>");
                 }
                 htmlContent.append("</tr>\n");
             }

@@ -83,9 +83,9 @@ public class Worker {
 
             } catch (Exception e) {
 //                String errorMessage = e.getMessage();
-                String fullMsg = String.format("%s\t%s\t caused an exception during the conversion: %s", operation, pdfUrl, e.getMessage());
+//                String fullMsg = String.format("%s\t%s\tcaused an exception during the conversion: %s", operation, pdfUrl, e.getMessage());
                 AWS.errorMsg("%s\t%s\t caused an exception during the conversion: %s", operation, pdfUrl, e.getMessage());
-                aws.sendMessageToQueue(WorkersToManagerQueueUrl, fullMsg);
+                aws.sendMessageToQueue(WorkersToManagerQueueUrl, operation + "\t" + pdfUrl + "\t" + e.getMessage() + "\t" + bucketName);
                 aws.deleteMessageFromQueue(ManagerToWorkersQueueUrl, receiptHandle);
             }
         }

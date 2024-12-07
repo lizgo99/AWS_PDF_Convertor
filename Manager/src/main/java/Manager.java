@@ -200,6 +200,10 @@ public class Manager {
         AWS.debugMsg("Manager: Processing worker message: %s", message.body());
         try {
             String[] parts = message.body().split("\t");
+            AWS.debugMsg("Manager: Worker message parts length: %d", parts.length);
+            for (String part : parts) {
+                AWS.debugMsg("Manager: Worker message part: %s", part);
+            }
             if (parts.length == 4) {
                 String operation = parts[0];
                 String pdfUrl = parts[1];
@@ -211,12 +215,11 @@ public class Manager {
                 if (taskTracker == null){
                     AWS.errorMsg("No task tracker for ID: %s", bucket);
                 } else {
-                    if (taskTracker.addResult(pdfUrl, operation + ": " + pdfUrl + " " + outputUrlOrErrorMsg)) {
-                        AWS.debugMsg("Manager: Added result to task tracker %s for: %s", bucket, pdfUrl);
-                        if (taskTracker.isAllCompleted()) {
-                            AWS.debugMsg("Manager: All tasks completed for input file: %s", taskTracker.getInputFileUrl());
-                            messageProcessorService.submit(() -> createAndSendSummaryFile(taskTracker, bucket));
-                        }
+                    taskTracker.addResult(pdfUrl, operation + ": " + pdfUrl + " " + outputUrlOrErrorMsg);
+                    AWS.debugMsg("Manager: Added result to task tracker %s for: %s", bucket, pdfUrl);
+                    if (taskTracker.isAllCompleted()) {
+                        AWS.debugMsg("Manager: All tasks completed for input file: %s", taskTracker.getInputFileUrl());
+                        messageProcessorService.submit(() -> createAndSendSummaryFile(taskTracker, bucket));
                     }
                 }
 
@@ -334,5 +337,3 @@ public class Manager {
         System.exit(0);
     }
 }
-
-
