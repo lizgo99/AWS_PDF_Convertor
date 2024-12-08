@@ -1,14 +1,11 @@
-import jdk.internal.net.http.common.Pair;
-import software.amazon.awssdk.regions.Region;
-import software.amazon.awssdk.services.sqs.model.Message;
-
 import java.io.*;
 import java.nio.file.Files;
 import java.util.List;
 import java.util.concurrent.*;
 import java.util.concurrent.atomic.AtomicBoolean;
-import java.util.concurrent.atomic.AtomicInteger;
-import java.util.concurrent.atomic.LongAdder;
+// import java.util.concurrent.atomic.AtomicInteger;
+
+import software.amazon.awssdk.services.sqs.model.Message;
 
 public class Manager {
 
@@ -19,14 +16,12 @@ public class Manager {
     private static String workersToManagerQueueUrl;
     private static String managerToLocalAppQueueUrl;
     private static int numOfPdfsPerWorker = -1;
-    // TODO: save bucketName if necessary.
-    // private static String bucketName;
 
     private static final ConcurrentHashMap<String, TaskTracker> TasksMap = new ConcurrentHashMap<>();
     private static final AtomicBoolean shouldTerminate = new AtomicBoolean(false);
     private static final ExecutorService localAppMessageProcessorService = Executors.newFixedThreadPool(3);
     private static final ExecutorService workersMessageProcessorService = Executors.newFixedThreadPool(3);
-//    private static final ExecutorService messageProcessorService = Executors.newFixedThreadPool(3);
+    // private static final ExecutorService messageProcessorService = Executors.newFixedThreadPool(3);
     private static final ExecutorService workerManagerService = Executors.newFixedThreadPool(1);
     private static final Semaphore workerSemaphore = new Semaphore(MAX_WORKERS);
 
@@ -145,15 +140,13 @@ public class Manager {
                 TasksMap.putIfAbsent(bucketName, taskTracker);
                 AWS.debugMsg("Manager: Created task tracker for ID: %s:", bucketName);
 
-                 int taskCount = 0;
-//                AtomicInteger taskCount = new AtomicInteger(0);
+                int taskCount = 0;
                 try (BufferedReader reader = aws.downloadFileFromS3(bucketName, keyPath)) {
                     String line;
                     while ((line = reader.readLine()) != null) {
                         AWS.debugMsg("Manager: Sending task to workers queue: %s", line);
                         aws.sendMessageToQueue(managerToWorkersQueueUrl, line + "\t" + bucketName);
-                         taskCount++;
-//                        taskCount.incrementAndGet();
+                        taskCount++;
                     }
                     AWS.debugMsg("Manager: Created %d tasks for file: %s", taskCount, fileName);
                 }
@@ -229,12 +222,6 @@ public class Manager {
                 for (String result : resultsList) {
                     writer.println(result);
                 }
-//                ConcurrentHashMap<String, LongAdder> results = taskTracker.getResults();
-//                for (String result : results.keySet()) {
-//                    for (int i = 0; i < results.get(result).intValue(); i++){
-//                        writer.println(result);
-//                    }
-//                }
             }
 
             String summaryFileUrl = aws.uploadFileToS3(bucketName, summaryKey, summaryFile);
@@ -387,42 +374,4 @@ public class Manager {
             AWS.debugMsg("Warning: Timeout waiting for queues to empty");
         }
     }
-
-    // private static void cleanup() {
-    // AWS.debugMsg("Manager: Starting cleanup process");
-
-    // // First, terminate all worker instances
-    // terminateAllWorkers();
-
-    // // Wait for any remaining tasks to complete
-    // try {
-    // Thread.sleep(10000); // Give more time for final tasks to complete
-    // } catch (InterruptedException e) {
-    // Thread.currentThread().interrupt();
-    // }
-
-    // // Delete all queues used in the system
-    // AWS.debugMsg("Manager: Deleting all queues");
-    // try {
-    // // Delete all queues
-    // aws.deleteQueue(managerToWorkersQueueUrl);
-    // aws.deleteQueue(workersToManagerQueueUrl);
-    // aws.deleteQueue(localAppToManagerQueueUrl);
-    // aws.deleteQueue(managerToLocalAppQueueUrl);
-
-    // // Wait for queue deletions to complete
-    // Thread.sleep(5000);
-
-    // AWS.debugMsg("Manager: All queues deleted successfully");
-    // } catch (Exception e) {
-    // AWS.errorMsg("Manager: Error during queue cleanup: %s", e.getMessage());
-    // }
-
-    // // // Finally cleanup AWS resources
-    // // aws.cleanup();
-
-    // AWS.debugMsg("Manager: Cleanup completed, terminating manager instance");
-    // System.exit(0);
-    // }
-
 }

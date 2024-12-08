@@ -9,6 +9,10 @@ public class Worker {
 
     public static void main(String[] args) {
 
+        File currentDir = new File(".");
+        AWS.debugMsg("Worker: Current directory: %s", currentDir.getAbsolutePath());
+        AWS.debugMsg("Worker: Directory writable: %b", currentDir.canWrite());
+
         String ManagerToWorkersQueueUrl = aws.connectToQueueByName("ManagerToWorkers");
         String WorkersToManagerQueueUrl = aws.connectToQueueByName("WorkersToManager");
 
@@ -47,17 +51,27 @@ public class Worker {
                     case "ToImage":
                         outputFileName = fileName + ".png";
                         outputFile = new File(outputFileName);
+                        AWS.debugMsg("Worker: Starting PNG conversion for %s", pdfUrl);
                         Converter.toImage(pdfUrl, outputFile.getPath());
+                        AWS.debugMsg("Worker: Finished PNG conversion. File exists: %b, Size: %d",
+                                outputFile.exists(), outputFile.length());
                         break;
                     case "ToText":
                         outputFileName = fileName + ".txt";
                         outputFile = new File(outputFileName);
+                        AWS.debugMsg("Worker: Starting TXT conversion for %s", pdfUrl);
                         Converter.toText(pdfUrl, outputFile.getPath());
+                        AWS.debugMsg("Worker: Finished TXT conversion. File exists: %b, Size: %d",
+                                outputFile.exists(), outputFile.length());
                         break;
                     case "ToHTML":
                         outputFileName = fileName + ".html";
                         outputFile = new File(outputFileName);
+                        AWS.debugMsg("Worker: Starting HTML conversion for %s", pdfUrl);
                         Converter.toHTML(pdfUrl, outputFile.getPath());
+                        AWS.debugMsg("Worker: Finished HTML conversion. File exists: %b, Size: %d",
+                                outputFile.exists(), outputFile.length());
+
                         break;
                     default:
                         AWS.errorMsg("Invalid operation: %s", operation);

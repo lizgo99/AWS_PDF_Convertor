@@ -21,30 +21,46 @@ public class Converter {
                 BufferedImage image = pdfRenderer.renderImageWithDPI(0, 300);
                 ImageIO.write(image, "PNG", new File(outputPath));
             } catch (IOException e) {
-                AWS.errorMsg("toImage: %s caused an exception during PDF operations: %s" , pdfUrl , e.getMessage());
+                AWS.errorMsg("toImage: %s caused an exception during PDF operations: %s", pdfUrl, e.getMessage());
             }
         } catch (IOException e) {
-            AWS.errorMsg("toImage: %s caused an exception during the HTTP request: %s" , pdfUrl , e.getMessage());
+            AWS.errorMsg("toImage: %s caused an exception during the HTTP request: %s", pdfUrl, e.getMessage());
         }
     }
 
-    public static void toHTML(String pdfUrl, String outputFilePath)  {
-        try(InputStream inputStream = Request.get(pdfUrl).execute().returnContent().asStream()){
+    public static void toHTML(String pdfUrl, String outputFilePath) {
+        try (InputStream inputStream = Request.get(pdfUrl).execute().returnContent().asStream()) {
             try (PDDocument document = PDDocument.load(inputStream)) {
                 PDFText2HTML pdfStripper = new PDFText2HTML();
                 pdfStripper.setStartPage(1);
                 pdfStripper.setEndPage(1);
-                pdfStripper.writeText(document, new java.io.FileWriter(outputFilePath));
+
+                java.io.StringWriter stringWriter = new java.io.StringWriter();
+                pdfStripper.writeText(document, stringWriter);
+                String content = stringWriter.toString();
+
+                try (java.io.FileWriter writer = new java.io.FileWriter(outputFilePath)) {
+                    writer.write(content);
+                    writer.flush();
+                }
+
+//                File outputFile = new File(outputFilePath);
+//                AWS.debugMsg("Converter: Wrote HTML file. Exists: %b, Size: %d",
+//                        outputFile.exists(), outputFile.length());
+
+                // pdfStripper.writeText(document, new java.io.FileWriter(outputFilePath));
             } catch (Exception e) {
-                AWS.errorMsg("toHTML: %s caused an exception during PDF operations: %s" , pdfUrl , e.getMessage());
+                 AWS.errorMsg("toHTML: %s caused an exception during PDF operations: %s" , pdfUrl , e.getMessage());
             }
         } catch (Exception e) {
-            AWS.errorMsg("toHTML: %s caused an exception during the HTTP request: %s" , pdfUrl , e.getMessage());
+             AWS.errorMsg("toHTML: %s caused an exception during the HTTP request: %s" , pdfUrl , e.getMessage());
+
+
         }
     }
 
     public static void toText(String pdfUrl, String outputFilePath) {
-        try(InputStream inputStream = Request.get(pdfUrl).execute().returnContent().asStream()){
+        try (InputStream inputStream = Request.get(pdfUrl).execute().returnContent().asStream()) {
             try (PDDocument document = PDDocument.load(inputStream)) {
                 PDFTextStripper pdfStripper = new PDFTextStripper();
                 pdfStripper.setStartPage(1);
@@ -54,31 +70,37 @@ public class Converter {
                 try (java.io.FileWriter writer = new java.io.FileWriter(outputFile)) {
                     writer.write(text);
                 } catch (IOException e) {
-                    AWS.errorMsg("toText: %s caused an exception during writing to file:" , e.getMessage());
+                    AWS.errorMsg("toText: %s caused an exception during writing to file:", e.getMessage());
                 }
             } catch (Exception e) {
-                AWS.errorMsg("toText: %s caused an exception during PDF operations: %s" , pdfUrl , e.getMessage());
+                AWS.errorMsg("toText: %s caused an exception during PDF operations: %s", pdfUrl, e.getMessage());
             }
         } catch (Exception e) {
-            AWS.errorMsg("toText: %s caused an exception during the HTTP request: %s" , pdfUrl , e.getMessage());
+            AWS.errorMsg("toText: %s caused an exception during the HTTP request: %s", pdfUrl, e.getMessage());
         }
     }
 
-
     public static void main(String[] args) {
-        toImage("https://www.bbc.co.uk/schools/religion/worksheets/pdf/judaism_passover_whatis.pdf", "output_image.png");
-//        toImage("http://www.jewishfederations.org/local_includes/downloads/39497.pdf", "output_image.png");
-//
-//        toHTML("http://www.st.tees.org.uk/assets/Downloads/Passover-service.pdf", "output.html");
-        toHTML("http://www.rabbinicalassembly.org/sites/default/files/public/jewish-law/holidays/pesah/why-do-we-sing-the-song-of-songs-on-passover.pdf", "output_html.html");
-//
-//
-//        toText("http://www.chabad.org/media/pdf/42/kUgi423322.pdf", "output_text.txt");
-        toText("http://yahweh.com/pdf/Booklet_Passover.pdf", "output_text.txt");
-//        toText("http://www.barrylou.com/books/TellingTheStoryInside.pdf", "output_text.txt");
+        // toImage("https://www.bbc.co.uk/schools/religion/worksheets/pdf/judaism_passover_whatis.pdf",
+        // "output_image.png");
+        // toImage("http://www.jewishfederations.org/local_includes/downloads/39497.pdf",
+        // "output_image.png");
+        //
+        // toHTML("http://www.st.tees.org.uk/assets/Downloads/Passover-service.pdf",
+        // "output.html");
+        toHTML("http://www.rabbinicalassembly.org/sites/default/files/public/jewish-law/holidays/pesah/why-do-we-sing-the-song-of-songs-on-passover.pdf",
+                "output_html.html");
+        //
+        //
+        // toText("http://www.chabad.org/media/pdf/42/kUgi423322.pdf",
+        // "output_text.txt");
+        // toText("http://yahweh.com/pdf/Booklet_Passover.pdf", "output_text.txt");
+        // toText("http://www.barrylou.com/books/TellingTheStoryInside.pdf",
+        // "output_text.txt");
 
-
-        // for this url - http://www.barrylou.com/books/TellingTheStoryInside.pdf It seems that page 1 and 2 are combined ? when printing page 2 it prints the text of both pages
+        // for this url - http://www.barrylou.com/books/TellingTheStoryInside.pdf It
+        // seems that page 1 and 2 are combined ? when printing page 2 it prints the
+        // text of both pages
 
     }
 
