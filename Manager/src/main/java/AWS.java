@@ -28,12 +28,12 @@ public class AWS {
 
     private static final AWS instance = new AWS();
 
-    private static final String ami = "ami-0f3a384f4dd1ea50d";
+    private static final String ami = "ami-0fc8b0d8fe87f1e9b";
     private static final String WorkerScript = "#!/bin/bash\n" +
             "sudo yum update -y\n" +
             "sudo yum install -y aws-cli\n" +
             "sudo yum install -y java-11-amazon-corretto\n" +
-            "sudo wget https://workerjar123.s3.us-west-2.amazonaws.com/resources/Worker.jar -O /home/Worker.jar\n" +
+            "sudo wget https://workerjar1234.s3.us-west-2.amazonaws.com/resources/Worker.jar -O /home/Worker.jar\n" +
 //            "sudo wget https://bucketforjars.s3.us-west-2.amazonaws.com/Worker.jar -O /home/Worker.jar\n" +
             "java -cp /home/Worker.jar Worker > /home/worker_output.log 2>&1";
 

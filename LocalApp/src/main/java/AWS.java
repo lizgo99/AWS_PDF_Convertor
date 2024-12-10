@@ -28,15 +28,15 @@ public class AWS {
 
     private static final AWS instance = new AWS();
 
-    private static final String AMI = "ami-0f3a384f4dd1ea50d";
+    private static final String AMI = "ami-0fc8b0d8fe87f1e9b";
     private static final String MANAGER_SCRIPT = "#!/bin/bash\n" +
             "sudo yum update -y\n" +
             "sudo yum install -y aws-cli\n" +
             "sudo yum install -y java-11-amazon-corretto\n" +
-            "sudo wget https://workerjar123.s3.us-west-2.amazonaws.com/resources/Manager.jar -O /home/Manager.jar\n" +
+            "sudo wget https://workerjar1234.s3.us-west-2.amazonaws.com/resources/Manager.jar -O /home/Manager.jar\n" +
 //            "sudo wget https://bucketforjars.s3.us-west-2.amazonaws.com/Manager.jar -O /home/Manager.jar\n" +
             "java -cp /home/Manager.jar Manager > /home/manager_output.log 2>&1";
-    private static final String BUCKET_JAR = "workerjar123";
+    private static final String BUCKET_JAR = "workerjar1234";
     private static final String MANGER_JAR_PATH = "Manager/target/Manager.jar";
     private static final String WORKER_JAR_PATH = "Worker/target/Worker.jar";
 
