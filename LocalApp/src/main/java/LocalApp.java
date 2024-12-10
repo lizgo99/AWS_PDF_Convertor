@@ -9,9 +9,12 @@ public class LocalApp {
     final static AWS aws = AWS.getInstance();
     private static final String ID = generateRandomID("");
     private static final String REJECT = "Rejected";
+    private static final long TEN_SECONDS = 10000;
+    private static final long ONE_MINUTE = 60000;
     private static String ManagerToLocalAppQueueUrl = null;
     public static String LocalAppToManager = "LocalAppToManager";
     public static String ManagerToLocalApp = "ManagerToLocalApp";
+
 
     public static void main(String[] args) throws Exception {
         // Read from terminal >java -jar yourjar.jar inputFileName outputFileName n [terminate]/[purge]
@@ -33,7 +36,7 @@ public class LocalApp {
         aws.addJarsIfNotExists();
 
         // Create manager if one doesn't exist
-        aws.startManagerIfNotActive();
+        boolean isManagerStarted = aws.startManagerIfNotActive();
 
         // Create a bucket and upload the file
         aws.createBucketIfNotExists(ID);
@@ -52,7 +55,7 @@ public class LocalApp {
         if (terminate || purge) {
             new Thread(() -> {
                 try {
-                    Thread.sleep(10000); // Wait 10 seconds to prevent racing condition
+                    Thread.sleep(isManagerStarted ? ONE_MINUTE : TEN_SECONDS); // Wait to prevent racing conditions in the queue
                     AWS.debugMsg("Sending delayed termination signal to Manager");
                     aws.sendMessageToQueue(LocalAppToManager, "terminate");
                 } catch (InterruptedException e) {

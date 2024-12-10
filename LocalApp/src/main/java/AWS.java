@@ -128,7 +128,7 @@ public class AWS {
             // Delete the public access block configuration
             s3.deletePublicAccessBlock(request);
 
-            debugMsg("Successfully removed 'Block all public access' for bucket: %s", bucketName);
+//            debugMsg("Successfully removed 'Block all public access' for bucket: %s", bucketName);
         } catch (Exception e) {
             errorMsg("Error removing 'Block all public access': %s", e.getMessage());
         }
@@ -281,12 +281,15 @@ public class AWS {
         }
     }
 
-    public void startManagerIfNotActive() {
+    public boolean startManagerIfNotActive() {
         // Check if any instances were found
         if (!isManagerActive()) {
             createEC2(MANAGER_SCRIPT,  Label.Manager, 1);
             debugMsg("LocalApp created a Manager EC2 instance");
+            return true;
         }
+        debugMsg("Manager EC2 instance is already active");
+        return false;
     }
 
     public boolean isManagerActive() {
