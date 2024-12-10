@@ -40,8 +40,8 @@ ToHTML	https://example.com/report.pdf
   1. One application took approximately 90 seconds for an input file of 100 PDF URLs with `n=10`.
   2. One application took approximately 110 seconds for an input file of 100 PDF URLs with `n=20`.
   3. One application took approximately 8 minutes for an input file of 2500 PDF URLs with `n=100`.
-  4. Three applications, each with an input file of 100 PDF URLs with n=10 took approximately 2 minutes.
-  5. Four applications, each with an input file of 2500 PDF URLs with n=100 took approximately 30 minutes.
+  4. Three applications, each with an input file of 100 PDF URLs with `n=10` took approximately 2 minutes.
+  5. Four applications, each with an input file of 2500 PDF URLs with `n=100` took approximately 30 minutes.
 
 ## System Details
 ### Instance Details
