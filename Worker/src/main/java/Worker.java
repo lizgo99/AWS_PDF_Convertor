@@ -6,16 +6,9 @@ public class Worker {
 
     final static AWS aws = AWS.getInstance();
 
-
     public static void main(String[] args) {
-
-        File currentDir = new File(".");
-        AWS.debugMsg("Worker: Current directory: %s", currentDir.getAbsolutePath());
-        AWS.debugMsg("Worker: Directory writable: %b", currentDir.canWrite());
-
         String ManagerToWorkersQueueUrl = aws.connectToQueueByName("ManagerToWorkers");
         String WorkersToManagerQueueUrl = aws.connectToQueueByName("WorkersToManager");
-
         while (true) {
             Message message = aws.getMessageFromQueue(ManagerToWorkersQueueUrl);
             if (message == null) {
@@ -28,9 +21,8 @@ public class Worker {
                 }
                 continue;
             }
-            aws.changeVisibilityTimeout(ManagerToWorkersQueueUrl, message.receiptHandle(), 60);
             String messageBody = message.body();
-            String receiptHandle = message.receiptHandle();
+            aws.deleteMessageFromQueue(ManagerToWorkersQueueUrl, message.receiptHandle());
             if (messageBody == null) {
                 break;
             }
@@ -51,25 +43,25 @@ public class Worker {
                     case "ToImage":
                         outputFileName = fileName + ".png";
                         outputFile = new File(outputFileName);
-                        AWS.debugMsg("Worker: Starting PNG conversion for %s", pdfUrl);
+                        AWS.debugMsg("Starting PNG conversion for %s", pdfUrl);
                         Converter.toImage(pdfUrl, outputFile.getPath());
-                        AWS.debugMsg("Worker: Finished PNG conversion. File exists: %b, Size: %d",
+                        AWS.debugMsg("Finished PNG conversion. File exists: %b, Size: %d",
                                 outputFile.exists(), outputFile.length());
                         break;
                     case "ToText":
                         outputFileName = fileName + ".txt";
                         outputFile = new File(outputFileName);
-                        AWS.debugMsg("Worker: Starting TXT conversion for %s", pdfUrl);
+                        AWS.debugMsg("Starting TXT conversion for %s", pdfUrl);
                         Converter.toText(pdfUrl, outputFile.getPath());
-                        AWS.debugMsg("Worker: Finished TXT conversion. File exists: %b, Size: %d",
+                        AWS.debugMsg("Finished TXT conversion. File exists: %b, Size: %d",
                                 outputFile.exists(), outputFile.length());
                         break;
                     case "ToHTML":
                         outputFileName = fileName + ".html";
                         outputFile = new File(outputFileName);
-                        AWS.debugMsg("Worker: Starting HTML conversion for %s", pdfUrl);
+                        AWS.debugMsg("Starting HTML conversion for %s", pdfUrl);
                         Converter.toHTML(pdfUrl, outputFile.getPath());
-                        AWS.debugMsg("Worker: Finished HTML conversion. File exists: %b, Size: %d",
+                        AWS.debugMsg("Finished HTML conversion. File exists: %b, Size: %d",
                                 outputFile.exists(), outputFile.length());
 
                         break;
@@ -88,7 +80,7 @@ public class Worker {
                 outputUrl = aws.getPublicFileUrl(bucketName, s3Key);
                 aws.sendMessageToQueue(WorkersToManagerQueueUrl, operation + "\t" + pdfUrl + "\t" + outputUrl + "\t" + bucketName);
                 AWS.debugMsg(String.format("Sent to Manager: %s\t%s\t%s\t%s" ,pdfUrl, outputUrl, operation,bucketName));
-                aws.deleteMessageFromQueue(ManagerToWorkersQueueUrl, receiptHandle);
+
 
                 // Clean up the local file after upload
                 if (outputFile.exists()) {
@@ -96,11 +88,8 @@ public class Worker {
                 }
 
             } catch (Exception e) {
-//                String errorMessage = e.getMessage();
-//                String fullMsg = String.format("%s\t%s\tcaused an exception during the conversion: %s", operation, pdfUrl, e.getMessage());
                 AWS.errorMsg("%s\t%s\t caused an exception during the conversion: %s", operation, pdfUrl, e.getMessage());
                 aws.sendMessageToQueue(WorkersToManagerQueueUrl, operation + "\t" + pdfUrl + "\t" + e.getMessage() + "\t" + bucketName);
-                aws.deleteMessageFromQueue(ManagerToWorkersQueueUrl, receiptHandle);
             }
         }
     }

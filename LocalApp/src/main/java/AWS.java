@@ -12,8 +12,9 @@ import java.io.BufferedReader;
 import java.io.File;
 import java.io.InputStreamReader;
 import java.util.Base64;
+import java.util.HashMap;
 import java.util.List;
-import java.util.UUID;
+import java.util.Map;
 import java.util.stream.Collectors;
 
 public class AWS {
@@ -27,16 +28,19 @@ public class AWS {
 
     private static final AWS instance = new AWS();
 
-    private static final String ami = "ami-0f3a384f4dd1ea50d";
-    private static final String ManagerScript = "#!/bin/bash\n" +
+    private static final String AMI = "ami-0f3a384f4dd1ea50d";
+    private static final String MANAGER_SCRIPT = "#!/bin/bash\n" +
             "sudo yum update -y\n" +
             "sudo yum install -y aws-cli\n" +
             "sudo yum install -y java-11-amazon-corretto\n" +
-//            "sudo wget https://workerjar123.s3.us-west-2.amazonaws.com/Manager.jar -O /home/Manager.jar\n" +
-            "sudo wget https://bucketforjars.s3.us-west-2.amazonaws.com/Manager.jar -O /home/Manager.jar\n" +
+            "sudo wget https://workerjar123.s3.us-west-2.amazonaws.com/resources/Manager.jar -O /home/Manager.jar\n" +
+//            "sudo wget https://bucketforjars.s3.us-west-2.amazonaws.com/Manager.jar -O /home/Manager.jar\n" +
             "java -cp /home/Manager.jar Manager > /home/manager_output.log 2>&1";
+    private static final String BUCKET_JAR = "workerjar123";
+    private static final String MANGER_JAR_PATH = "Manager/target/Manager.jar";
+    private static final String WORKER_JAR_PATH = "Worker/target/Worker.jar";
 
-    private static boolean DEBUG = true;
+    private static boolean debug = true;
 
     public enum Label {
         Manager,
@@ -47,11 +51,16 @@ public class AWS {
         s3 = S3Client.builder().region(region1).build();
         ec2 = Ec2Client.builder().region(region2).build();
         sqs = SqsClient.builder().region(region1).build();
-//        createBucketIfNotExists(bucketName);
     }
 
     public static AWS getInstance() {
         return instance;
+    }
+
+    public void close() {
+        s3.close();
+        ec2.close();
+        sqs.close();
     }
 
     ////////////////// S3 //////////////////
@@ -74,16 +83,18 @@ public class AWS {
     }
 
     public String uploadFileToS3(String bucketName, String keyPath, File file){
-        debugMsg("Start upload: %s, to S3", file.getName());
+        String fileAddress = "s3://" + bucketName + "/" + keyPath;
+        debugMsg("Starting to upload: %s, to %s", file.getName(), fileAddress);
         PutObjectRequest req = PutObjectRequest.builder()
                 .bucket(bucketName)
                 .key(keyPath)
                 .build();
 
         s3.putObject(req, file.toPath()); // we don't need to check if the file exist already
+        debugMsg("Finished uploading %s", file.getName());
 
         // Return the S3 path of the uploaded file
-        return "s3://" + bucketName + "/" + keyPath;
+        return fileAddress;
     }
 
     public BufferedReader downloadFileFromS3(String bucketName, String s3Url) {
@@ -99,6 +110,7 @@ public class AWS {
                     .build();
 
             ResponseInputStream<GetObjectResponse> s3Object = s3.getObject(getObjectRequest);
+            debugMsg("Finished downloading file: %s" ,s3Url);
             return new BufferedReader(new InputStreamReader(s3Object));
         } catch (Exception e) {
             errorMsg("Error downloading file from S3: %s", e.getMessage());
@@ -151,14 +163,23 @@ public class AWS {
         }
     }
 
+    public void deleteAllBuckets() {
+        ListBucketsResponse listBucketsResponse = s3.listBuckets();
+        listBucketsResponse.buckets().forEach(bucket -> {{
+                deleteBucket(bucket.name());
+            }
+        });
+        debugMsg("All buckets deleted.");
+    }
+
     public void deleteBucket(String bucketName) {
+        debugMsg("Deleting bucket %s", bucketName);
         emptyBucket(bucketName);
         DeleteBucketRequest deleteBucketRequest = DeleteBucketRequest.builder()
                 .bucket(bucketName)
                 .build();
         s3.deleteBucket(deleteBucketRequest);
-        debugMsg("Bucket %s  has been deleted", bucketName);
-        s3.close();
+        debugMsg("Bucket %s has been deleted", bucketName);
     }
 
     public void emptyBucket(String bucketName) {
@@ -181,12 +202,45 @@ public class AWS {
         debugMsg("Finished cleaning bucket %s", bucketName);
     }
 
+    public void addJarsIfNotExists() {
+        createBucketIfNotExists(BUCKET_JAR);
+
+        boolean isMangerExists = checkIfFileExist(BUCKET_JAR, "resources/Manager.jar");
+        boolean isWorkerExists = checkIfFileExist(BUCKET_JAR, "resources/Worker.jar");
+        if (!isMangerExists) {uploadFileToS3(BUCKET_JAR, "resources/Manager.jar", new File(MANGER_JAR_PATH));}
+        if (!isWorkerExists) {uploadFileToS3(BUCKET_JAR, "resources/Worker.jar", new File(WORKER_JAR_PATH));}
+
+        makeFolderPublic(BUCKET_JAR, "resources");
+    }
+
+    public boolean checkIfFileExist(String bucketName, String filePath) {
+        try {
+            HeadObjectRequest request = HeadObjectRequest.builder()
+                    .bucket(bucketName)
+                    .key(filePath)
+                    .build();
+
+            s3.headObject(request);
+            debugMsg("File %s/%s found", bucketName, filePath);
+            return true;
+        } catch (S3Exception e) {
+            if (e.statusCode() == 404) {
+                debugMsg("File %s/%s does not exist", bucketName, filePath);
+            } else if (e.statusCode() == 403) {
+                errorMsg("Access denied for %s/%s. Message: %s", bucketName, filePath, e.getMessage());
+            } else {
+                errorMsg("Unexpected error finding %s/%s. Message: %S", bucketName, filePath, e.getMessage());
+            }
+            return false;
+        }
+    }
+
     ////////////////// EC2 //////////////////
     public String createEC2(String script, Label tagName, int numberOfInstances) {
         Ec2Client ec2 = Ec2Client.builder().region(region2).build();
         RunInstancesRequest runRequest = (RunInstancesRequest) RunInstancesRequest.builder()
                 .instanceType(InstanceType.T2_MICRO)
-                .imageId(ami)
+                .imageId(AMI)
                 .maxCount(numberOfInstances)
                 .minCount(1)
                 .keyName("vockey")
@@ -230,7 +284,7 @@ public class AWS {
     public void startManagerIfNotActive() {
         // Check if any instances were found
         if (!isManagerActive()) {
-            createEC2(ManagerScript,  Label.Manager, 1);
+            createEC2(MANAGER_SCRIPT,  Label.Manager, 1);
             debugMsg("LocalApp created a Manager EC2 instance");
         }
     }
@@ -282,7 +336,7 @@ public class AWS {
                     .build();
 
             SendMessageResponse sendResponse = sqs.sendMessage(sendMsgRequest);
-            debugMsg("Message sent. MessageId: %s", sendResponse.messageId());
+            debugMsg("Message sent. MessageId: %s, Message body: %s", sendResponse.messageId(), sendResponse.md5OfMessageBody());
         } catch (SqsException e) {
             errorMsg("Error sending message: %s", e.awsErrorDetails().errorMessage());
             throw e;
@@ -302,21 +356,6 @@ public class AWS {
         }
     }
 
-//    public void deleteQueue(String queueUrl) {
-//        try {
-//            DeleteQueueRequest deleteRequest = DeleteQueueRequest.builder()
-//                    .queueUrl(queueUrl)
-//                    .build();
-//
-//            sqs.deleteQueue(deleteRequest);
-//            debugMsg("Queue deleted successfully: %s", queueUrl);
-//        } catch (Exception e) {
-//            errorMsg("Error deleting the queue (%s): %s", queueUrl, e.getMessage());
-//        } finally {
-//            sqs.close();
-//        }
-//    }
-
     public List<Message> pollMessages(String queueUrl) {
         try {
 
@@ -327,7 +366,8 @@ public class AWS {
 
             ReceiveMessageRequest receiveRequest = ReceiveMessageRequest.builder()
                     .queueUrl(queueUrl)
-                    .maxNumberOfMessages(10) // what if there are more than 10 messages?
+                    .maxNumberOfMessages(10)
+                    .visibilityTimeout(5)
                     .build();
 
             ReceiveMessageResponse receiveResponse = sqs.receiveMessage(receiveRequest);
@@ -366,15 +406,15 @@ public class AWS {
 
     ////////////////// MESSAGE HANDLERS //////////////////
     public static void changeDebugMode(){
-        DEBUG = !DEBUG;
+        debug = !debug;
     }
 
     public static void debugMsg(String format, Object... args) {
-        if (DEBUG) {
+        if (debug) {
             String blueBold = "\033[1;34m";
             String reset = "\033[0m";
             String formattedMsg = String.format(format, args);
-            System.out.println(blueBold + "[DEBUG] " + reset + formattedMsg);
+            System.out.println(blueBold + "[DEBUG] " + reset + "LocalApp: " + formattedMsg);
         }
     }
 
@@ -382,6 +422,6 @@ public class AWS {
         String redBold = "\033[1;31m";
         String reset = "\033[0m";
         String formattedMsg = String.format(format, args);
-        System.out.println(redBold + "[ERROR] " + reset + formattedMsg);
+        System.out.println(redBold + "[ERROR] " + reset + "LocalApp: " + formattedMsg);
     }
 }

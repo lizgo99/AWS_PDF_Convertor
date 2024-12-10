@@ -1,4 +1,3 @@
-//import software.amazon.awssdk.core.ResponseBytes;
 import software.amazon.awssdk.core.ResponseInputStream;
 import software.amazon.awssdk.regions.Region;
 import software.amazon.awssdk.services.ec2.Ec2Client;
@@ -9,7 +8,10 @@ import software.amazon.awssdk.services.s3.model.*;
 import software.amazon.awssdk.services.sqs.SqsClient;
 import software.amazon.awssdk.services.sqs.model.*;
 
-import java.io.*;
+//import java.io.*;
+import java.io.BufferedReader;
+import java.io.File;
+import java.io.InputStreamReader;
 import java.util.Base64;
 import java.util.List;
 import java.util.stream.Collectors;
@@ -31,8 +33,8 @@ public class AWS {
             "sudo yum update -y\n" +
             "sudo yum install -y aws-cli\n" +
             "sudo yum install -y java-11-amazon-corretto\n" +
-//            "sudo wget https://workerjar123.s3.us-west-2.amazonaws.com/Worker.jar -O /home/Worker.jar\n" +
-            "sudo wget https://bucketforjars.s3.us-west-2.amazonaws.com/Worker.jar -O /home/Worker.jar\n" +
+            "sudo wget https://workerjar123.s3.us-west-2.amazonaws.com/resources/Worker.jar -O /home/Worker.jar\n" +
+//            "sudo wget https://bucketforjars.s3.us-west-2.amazonaws.com/Worker.jar -O /home/Worker.jar\n" +
             "java -cp /home/Worker.jar Worker > /home/worker_output.log 2>&1";
 
     private static boolean DEBUG = true;
@@ -205,7 +207,8 @@ public class AWS {
             }
             ReceiveMessageRequest receiveRequest = ReceiveMessageRequest.builder()
                     .queueUrl(queueUrl)
-                    .maxNumberOfMessages(10) // what if there are more than 10 messages?
+                    .maxNumberOfMessages(10)
+                    .visibilityTimeout(5)
                     .build();
 
             ReceiveMessageResponse receiveResponse = sqs.receiveMessage(receiveRequest);
@@ -407,7 +410,7 @@ public class AWS {
             String blueBold = "\033[1;34m";
             String reset = "\033[0m";
             String formattedMsg = String.format(format, args);
-            System.out.println(blueBold + "[DEBUG] " + reset + formattedMsg);
+            System.out.println(blueBold + "[DEBUG] " + reset + "Manager: " + formattedMsg);
         }
     }
 
@@ -415,7 +418,7 @@ public class AWS {
         String redBold = "\033[1;31m";
         String reset = "\033[0m";
         String formattedMsg = String.format(format, args);
-        System.out.println(redBold + "[ERROR] " + reset + formattedMsg);
+        System.out.println(redBold + "[ERROR] " + reset + "Manager: " + formattedMsg);
     }
 
 }

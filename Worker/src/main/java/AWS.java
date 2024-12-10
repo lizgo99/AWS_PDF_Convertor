@@ -1,5 +1,4 @@
 import software.amazon.awssdk.regions.Region;
-//import software.amazon.awssdk.services.ec2.Ec2Client;
 import software.amazon.awssdk.services.s3.S3Client;
 import software.amazon.awssdk.services.s3.model.*;
 import software.amazon.awssdk.services.sqs.SqsClient;
@@ -11,7 +10,6 @@ public class AWS {
     ////////////////// Fields //////////////////
 
     private final S3Client s3;
-//    private final Ec2Client ec2;
     private final SqsClient sqs;
 
     private static final Region region1 = Region.US_WEST_2;
@@ -23,14 +21,8 @@ public class AWS {
 
     private static boolean DEBUG = true;
 
-    public enum Label {
-        Manager,
-        Worker
-    }
-
     private AWS() {
         s3 = S3Client.builder().region(region1).build();
-//        ec2 = Ec2Client.builder().region(region2).build();
         sqs = SqsClient.builder().region(region1).build();
     }
 
@@ -95,11 +87,11 @@ public class AWS {
             ReceiveMessageRequest receiveRequest = ReceiveMessageRequest.builder()
                     .queueUrl(queueUrl)
                     .maxNumberOfMessages(1)
-                    .visibilityTimeout(30)  // ? is this a good number?
+                    .visibilityTimeout(30)
                     .build();
 
             ReceiveMessageResponse receiveResponse = sqs.receiveMessage(receiveRequest);
-            if (receiveResponse.messages().size() == 0) {
+            if (receiveResponse.messages().isEmpty()) {
                 return null;
             }
 
@@ -127,16 +119,6 @@ public class AWS {
         }
     }
 
-    public void changeVisibilityTimeout(String queueUrl, String receiptHandle, int timeout) {
-        ChangeMessageVisibilityRequest request = ChangeMessageVisibilityRequest.builder()
-                .queueUrl(queueUrl)
-                .receiptHandle(receiptHandle)
-                .visibilityTimeout(timeout)
-                .build();
-        sqs.changeMessageVisibility(request);
-        debugMsg("Visibility timeout changed for message %s" , receiptHandle);
-    }
-
     ////////////////// MESSAGE HANDLERS //////////////////
     public static void changeDebugMode(){
         DEBUG = !DEBUG;
@@ -147,7 +129,7 @@ public class AWS {
             String blueBold = "\033[1;34m";
             String reset = "\033[0m";
             String formattedMsg = String.format(format, args);
-            System.out.println(blueBold + "[DEBUG] " + reset + formattedMsg);
+            System.out.println(blueBold + "[DEBUG] " + reset + "Worker: " + formattedMsg);
         }
     }
 
@@ -155,6 +137,6 @@ public class AWS {
         String redBold = "\033[1;31m";
         String reset = "\033[0m";
         String formattedMsg = String.format(format, args);
-        System.out.println(redBold + "[ERROR] " + reset + formattedMsg);
+        System.out.println(redBold + "[ERROR] " + reset + "Worker: " + formattedMsg);
     }
 }
