@@ -54,8 +54,6 @@ public class Converter {
             }
         } catch (Exception e) {
              AWS.errorMsg("toHTML: %s caused an exception during the HTTP request: %s" , pdfUrl , e.getMessage());
-
-
         }
     }
 

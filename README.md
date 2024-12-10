@@ -1,5 +1,5 @@
 # Project: Distributed PDF Processing in the Cloud
-
+by Liz Gokhvat [208005777] , Ido Toker [207942186]
 ## Overview
 This project implements a distributed system to process PDF files in the cloud. Users provide an input file containing URLs of PDF files along with desired operations (e.g., `ToImage`, `ToText`, `ToHTML`). The system processes these files using a distributed architecture leveraging AWS services (S3, SQS, EC2) for scalability and reliability.
 
