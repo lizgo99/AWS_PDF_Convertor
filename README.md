@@ -12,7 +12,7 @@ mvn clean package
 ```
 Then, run the Local Application with the following command:
 ```bash
-java -jar LocalApp.jar <inputFileName> <outputFileName> <n> [terminate|purge]
+java -jar path/to/LocalApp.jar <inputFileName> <outputFileName> <n> [terminate|purge]
 ```
 Where:
 - `LocalApp.jar` is the JAR file for the Local Application
