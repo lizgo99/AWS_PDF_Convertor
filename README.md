@@ -1,5 +1,5 @@
 # Distributed PDF Processing in AWS
-by Liz Gokhvat [208005777] , Ido Toker [207942186]
+by Liz Gokhvat and Ido Toker
 ## Overview
 This project implements a distributed system to process PDF files in the cloud. Users provide an input file containing URLs of PDF files along with desired operations (e.g., `ToImage`, `ToText`, `ToHTML`). The system processes these files using a distributed architecture leveraging AWS services (S3, SQS, EC2) for scalability and reliability.
 
@@ -12,7 +12,7 @@ mvn clean package
 ```
 Then, run the Local Application with the following command:
 ```bash
-java -jar path/to/LocalApp.jar <inputFileName> <outputFileName> <n> [terminate|purge]
+java -jar LocalApp.jar <inputFileName> <outputFileName> <n> [terminate|purge]
 ```
 Where:
 - `LocalApp.jar` is the JAR file for the Local Application
@@ -40,7 +40,7 @@ ToHTML	https://example.com/report.pdf
   1. One application took approximately 90 seconds for an input file of 100 PDF URLs with `n=10`.
   2. One application took approximately 110 seconds for an input file of 100 PDF URLs with `n=20`.
   3. One application took approximately 8 minutes for an input file of 2500 PDF URLs with `n=100`.
-  4. Three applications, each with an input file of 100 PDF URLs with `n=10` took approximately 2 minutes.
+  4. Three applications, each with an input file of 100 PDF URLs with `n=10` took approximately 2 minutes. 
   5. Four applications, each with an input file of 2500 PDF URLs with `n=100` took approximately 30 minutes.
 
 ## System Details
